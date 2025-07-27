@@ -1,15 +1,12 @@
 # GitHub Repository Clone Statistics Tracker
 
-Git Stats is the missing piece of GitHub analytics... even if you pay, they will only give you 14 days of history. Bizarre gap for a company built on data... anyways, Git Stats is a modern Python application for tracking and storing GitHub repository clone statistics. This tool fetches clone data from the GitHub API and maintains historical records in a SQLite database. It runs as an always on service and periodically fetches clone stats (total and unique) and displays them in an easy to use dashboard with shields.io badges available for use.
+Git Stats is the missing piece of GitHub analytics - even if you pay, they will only give you 14 days of history. Bizarre gap for a company built on data... 
+
+But I digress. Git Stats is a modern Python application for tracking and storing GitHub repository clone statistics. This tool fetches clone data from the GitHub API and maintains historical records in a SQLite database. It runs as an always on service and periodically fetches clone stats (total and unique) and displays them in an easy to use dashboard with shields.io badges available for use.
 
 
 <div align="center">
 <video width=832 src="https://github.com/user-attachments/assets/ba4b670f-f0d3-4db6-9c18-e9480486ba84"></video>
-</div>
-
-
-<div align="center">
-<img width="70%" height="70%" alt="image" src="https://github.com/user-attachments/assets/f16b879d-f629-49a0-9fec-c17e827156b2" />
 </div>
 
 ---
@@ -162,6 +159,10 @@ git-clone-stats server
 ### User Interface
 
 Navigate to `http://localhost:8000` in your web browser to access the user interface. The dashboard provides two viewing modes:
+
+<div align="center">
+<img width="70%" height="70%" alt="image" src="https://github.com/user-attachments/assets/f16b879d-f629-49a0-9fec-c17e827156b2" />
+</div>
 
 #### Card View (Default)
 Displays a card for each repository with:
