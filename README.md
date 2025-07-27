@@ -16,13 +16,18 @@ Git Stats is the missing piece of GitHub analytics... even if you pay, they will
 
 ## Features
 
-- Fetches repository clone statistics (total clones and unique cloners) from the GitHub API
-- Stores historical data in a SQLite database for robust and efficient querying
-- Avoids duplicate entries by only recording new data
-- Web dashboard with automatic background synchronization
-- CLI interface with subcommands for sync and server operations
-- PyPI-ready packaging with modern Python tooling support
-- Compatible with uv for fast installation and execution
+- **Complete GitHub Analytics**: Fetches repository clone statistics (total clones and unique cloners) and star counts from the GitHub API
+- **Historical Data Storage**: Maintains unlimited historical records in a SQLite database with robust querying capabilities
+- **Smart Data Management**: Avoids duplicate entries by only recording new data points
+- **Web Dashboard**: Modern, responsive UI with automatic background synchronization and dark/light theme support
+- **Interactive Visualizations**: Time-series charts with customizable date ranges and repository filtering
+- **Shields.io Badge Integration**: Generates embeddable badges for README files and documentation
+- **Cloud-Ready Deployment**: One-command deployment to Google App Engine with auto-scaling
+- **Repository Management**: Add/remove tracked repositories through the web interface
+- **Data Export/Import**: Backup and migration functionality for database portability
+- **Flexible Sync Intervals**: Configurable automatic synchronization (daily, weekly, biweekly)
+- **Modern CLI Interface**: Subcommands for sync and server operations with comprehensive help
+- **PyPI-Ready Packaging**: Modern Python tooling support with uv compatibility for fast installation
 
 ### Quickstart with uv
 
@@ -239,6 +244,10 @@ Interactive time-series visualization showing:
   **Example:**
   `http://localhost:8000/badge/reclaimed` will redirect to:
   `https://img.shields.io/badge/clones-123-blue` (where 123 is the total clone count)
+
+## Easy Deployment to App Engine
+
+Deploy to Google Cloud App Engine in minutes. See the complete deployment guide: [gcloud_deploy.md](gcloud_deploy.md)
 
 ## Development
 

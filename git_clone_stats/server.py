@@ -427,8 +427,11 @@ def run_background_sync():
         logger.info("Background sync finished.")
 
 
-def run_server(port=8000):
+def run_server(port=None):
     """Run the web server."""
+    if port is None:
+        port = int(os.environ.get("PORT", 8000))
+    
     # Start the background sync in a separate thread
     sync_thread = threading.Thread(target=run_background_sync, daemon=True)
     sync_thread.start()
