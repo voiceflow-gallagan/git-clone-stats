@@ -4,7 +4,7 @@ A simple Python application for tracking and storing GitHub repository clone sta
 
 
 <div align="center">
-https://github.com/user-attachments/assets/ba4b670f-f0d3-4db6-9c18-e9480486ba84
+<video width=832 src="https://github.com/user-attachments/assets/ba4b670f-f0d3-4db6-9c18-e9480486ba84"></video>
 </div>
 
 
