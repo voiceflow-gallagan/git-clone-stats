@@ -88,17 +88,25 @@ class DatabaseManager:
             self.logger.error(f"Database setup failed: {e}")
             raise
 
-    def get_existing_timestamps(self, repo: str) -> List[str]:
-        """Get all existing timestamps for a given repository."""
+    def _execute_query(self, query: str, params: tuple = (), fetch_all: bool = True):
+        """Execute a database query with consistent error handling."""
         try:
             with self.conn:
-                cursor = self.conn.execute(
-                    "SELECT timestamp FROM clone_history WHERE repo = ?", (repo,)
-                )
-                return [row['timestamp'] for row in cursor.fetchall()]
+                cursor = self.conn.execute(query, params)
+                if fetch_all:
+                    return cursor.fetchall()
+                return cursor.fetchone()
         except sqlite3.Error as e:
-            self.logger.error(f"Failed to get existing timestamps for {repo}: {e}")
-            return []
+            self.logger.error(f"Database query failed: {e}")
+            return [] if fetch_all else None
+
+    def get_existing_timestamps(self, repo: str) -> List[str]:
+        """Get all existing timestamps for a given repository."""
+        rows = self._execute_query(
+            "SELECT timestamp FROM clone_history WHERE repo = ?", 
+            (repo,)
+        )
+        return [row['timestamp'] for row in rows] if rows else []
 
     def insert_clone_records(self, repo: str, records: List['CloneRecord']):
         """Insert new clone records into the database."""
@@ -122,15 +130,10 @@ class DatabaseManager:
 
     def get_tracked_repos(self) -> List[str]:
         """Get all actively tracked repositories."""
-        try:
-            with self.conn:
-                cursor = self.conn.execute(
-                    "SELECT repo_name FROM tracked_repos WHERE is_active = 1"
-                )
-                return [row[0] for row in cursor.fetchall()]
-        except sqlite3.Error as e:
-            self.logger.error(f"Failed to get tracked repos: {e}")
-            return []
+        rows = self._execute_query(
+            "SELECT repo_name FROM tracked_repos WHERE is_active = 1"
+        )
+        return [row[0] for row in rows] if rows else []
 
     def add_tracked_repo(self, repo_name: str) -> bool:
         """Add a repository to tracking."""
@@ -176,16 +179,12 @@ class DatabaseManager:
 
     def get_repo_stars(self, repo: str) -> Optional[int]:
         """Get star count for a repository."""
-        try:
-            with self.conn:
-                cursor = self.conn.execute(
-                    "SELECT star_count FROM repo_stars WHERE repo = ?", (repo,)
-                )
-                row = cursor.fetchone()
-                return row[0] if row else None
-        except sqlite3.Error as e:
-            self.logger.error(f"Failed to get star count for {repo}: {e}")
-            return None
+        row = self._execute_query(
+            "SELECT star_count FROM repo_stars WHERE repo = ?", 
+            (repo,), 
+            fetch_all=False
+        )
+        return row[0] if row else None
 
     def export_database(self) -> Dict:
         """Export the complete database to a dictionary."""
@@ -419,8 +418,8 @@ def load_configuration() -> Tuple[str, str, List[str], str]:
     if not github_username:
         raise ValueError("GITHUB_USERNAME environment variable not set.")
 
-    # Repository list - could be loaded from config file in the future
-    repos = ['reddacted', 'reclaimed', 'google_workspace_mcp', 'netshow', 'mcpo', 'quantconnect-mcp', 'open-webui-postgres-migration']
+    # Default repository list (only used for initial setup)
+    repos = []
 
     db_path = "github_stats.db"
 
@@ -438,12 +437,7 @@ def run_sync():
         with DatabaseManager(db_path) as db_manager:
             db_manager.setup_database()
             
-            # Migrate existing hardcoded repos to database if no tracked repos exist
-            tracked_repos = db_manager.get_tracked_repos()
-            if not tracked_repos and repos:
-                logger.info("Migrating hardcoded repos to database...")
-                for repo in repos:
-                    db_manager.add_tracked_repo(repo)
+            # No default repos to migrate since repos list is empty
             
             tracker = GitHubStatsTracker(github_token, github_username, repos, db_manager)
             tracker.update_all_repositories()

@@ -128,7 +128,7 @@ async function loadTemplate() {
                 <div class="badge-preview">
                     <img src="{{badgeUrl}}" alt="Clone badge for {{repo.name}}" />
                 </div>
-                <button class="copy-btn" onclick="copyToClipboard('{{markdownCode}}', this)">
+                <button class="btn btn-primary copy-btn" onclick="copyToClipboard('{{markdownCode}}', this)">
                     <i class="fas fa-copy"></i>
                     Copy Markdown
                 </button>
@@ -179,11 +179,7 @@ async function fetchChartData(days = 30, repo = null) {
         if (repo) {
             url += `&repo=${encodeURIComponent(repo)}`;
         }
-        
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Failed to fetch chart data');
-        
-        return await response.json();
+        return await api.get(url);
     } catch (error) {
         console.error('Error fetching chart data:', error);
         throw error;
@@ -418,14 +414,45 @@ const timeFilter = document.getElementById('time-filter');
 const repoFilter = document.getElementById('repo-filter');
 const refreshChartBtn = document.getElementById('refresh-chart-btn');
 
+// API Helper Functions
+const api = {
+    async get(url) {
+        const response = await fetch(url);
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(error || `Request failed: ${response.status}`);
+        }
+        return response.json();
+    },
+
+    async post(url, data = {}) {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(error || `Request failed: ${response.status}`);
+        }
+        return response.json();
+    },
+
+    async delete(url) {
+        const response = await fetch(url, { method: 'DELETE' });
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(error || `Request failed: ${response.status}`);
+        }
+        return response.json();
+    }
+};
+
 // Fetch Statistics
 async function fetchStats() {
     try {
         showLoading(true);
-        const response = await fetch('/stats');
-        if (!response.ok) throw new Error('Failed to fetch stats');
-
-        const data = await response.json();
+        const data = await api.get('/stats');
         githubUsername = data.github_username || '';
         processStats(data.stats);
         updateHeroStats();
@@ -615,31 +642,32 @@ async function copyToClipboard(text, button) {
     }
 }
 
-// Sync Functionality
-async function runSync() {
-    const button = syncButton;
-    const originalText = button.innerHTML;
-
+// Button Loading State Helper
+async function withButtonLoading(button, loadingText, action) {
+    const originalContent = button.innerHTML;
     button.disabled = true;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Syncing...</span>';
-
+    button.innerHTML = `<i class="fas fa-spinner fa-spin"></i>${loadingText ? `<span>${loadingText}</span>` : ''}`;
+    
     try {
-        const response = await fetch('/sync', { method: 'POST' });
-        const result = await response.json();
-
-        if (response.ok) {
-            showToast('Sync completed successfully!', 'success');
-            await fetchStats();
-        } else {
-            throw new Error(result.message || 'Sync failed');
-        }
-    } catch (error) {
-        console.error('Sync error:', error);
-        showToast(error.message || 'Sync failed', 'error');
+        return await action();
     } finally {
         button.disabled = false;
-        button.innerHTML = originalText;
+        button.innerHTML = originalContent;
     }
+}
+
+// Sync Functionality
+async function runSync() {
+    await withButtonLoading(syncButton, 'Syncing...', async () => {
+        try {
+            const result = await api.post('/sync');
+            showToast('Sync completed successfully!', 'success');
+            await fetchStats();
+        } catch (error) {
+            console.error('Sync error:', error);
+            showToast(error.message || 'Sync failed', 'error');
+        }
+    });
 }
 
 // Loading State
@@ -651,9 +679,7 @@ function showLoading(show) {
 // Repository Management Functions
 async function fetchTrackedRepos() {
     try {
-        const response = await fetch('/tracked-repos');
-        if (!response.ok) throw new Error('Failed to fetch tracked repos');
-        const data = await response.json();
+        const data = await api.get('/tracked-repos');
         return data.tracked_repos;
     } catch (error) {
         console.error('Error fetching tracked repos:', error);
@@ -664,20 +690,7 @@ async function fetchTrackedRepos() {
 
 async function addTrackedRepo(repoName) {
     try {
-        const response = await fetch('/tracked-repos', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ repo_name: repoName })
-        });
-        
-        if (!response.ok) {
-            const error = await response.text();
-            throw new Error(error);
-        }
-        
-        const result = await response.json();
+        const result = await api.post('/tracked-repos', { repo_name: repoName });
         showToast(result.message, 'success');
         return true;
     } catch (error) {
@@ -689,16 +702,7 @@ async function addTrackedRepo(repoName) {
 
 async function removeTrackedRepo(repoName) {
     try {
-        const response = await fetch(`/tracked-repos/${repoName}`, {
-            method: 'DELETE'
-        });
-        
-        if (!response.ok) {
-            const error = await response.text();
-            throw new Error(error);
-        }
-        
-        const result = await response.json();
+        const result = await api.delete(`/tracked-repos/${repoName}`);
         showToast(result.message, 'success');
         return true;
     } catch (error) {
@@ -723,7 +727,7 @@ function renderTrackedRepos(repos) {
     trackedReposList.innerHTML = repos.map(repo => `
         <div class="tracked-repo-item">
             <span class="repo-name">${repo}</span>
-            <button class="remove-btn" onclick="handleRemoveRepo('${repo}')">
+            <button class="btn btn-danger btn-sm remove-btn" onclick="handleRemoveRepo('${repo}')">
                 <i class="fas fa-trash"></i>
                 Remove
             </button>
@@ -756,21 +760,13 @@ async function handleAddRepo() {
         return;
     }
 
-    const button = addRepoBtn;
-    const originalText = button.innerHTML;
-    
-    button.disabled = true;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding...';
-
-    const success = await addTrackedRepo(repoName);
-    
-    if (success) {
-        newRepoInput.value = '';
-        await loadTrackedRepos();
-    }
-
-    button.disabled = false;
-    button.innerHTML = originalText;
+    await withButtonLoading(addRepoBtn, ' Adding...', async () => {
+        const success = await addTrackedRepo(repoName);
+        if (success) {
+            newRepoInput.value = '';
+            await loadTrackedRepos();
+        }
+    });
 }
 
 async function handleRemoveRepo(repoName) {
@@ -797,43 +793,34 @@ function hideModal() {
 
 // Export/Import Functions
 async function exportDatabase() {
-    const button = exportBtn;
-    const originalText = button.innerHTML;
-    
-    button.disabled = true;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
+    await withButtonLoading(exportBtn, ' Exporting...', async () => {
+        try {
+            const response = await fetch('/export');
+            if (!response.ok) throw new Error('Export failed');
 
-    try {
-        const response = await fetch('/export');
-        if (!response.ok) {
-            throw new Error('Export failed');
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            
+            // Get filename from response headers or use default
+            const contentDisposition = response.headers.get('Content-Disposition');
+            const filename = contentDisposition 
+                ? contentDisposition.split('filename=')[1].replace(/"/g, '')
+                : `github_stats_backup_${new Date().toISOString().split('T')[0]}.json`;
+            
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+
+            showToast('Database exported successfully!', 'success');
+        } catch (error) {
+            console.error('Export error:', error);
+            showToast('Failed to export database', 'error');
         }
-
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        
-        // Get filename from response headers or use default
-        const contentDisposition = response.headers.get('Content-Disposition');
-        const filename = contentDisposition 
-            ? contentDisposition.split('filename=')[1].replace(/"/g, '')
-            : `github_stats_backup_${new Date().toISOString().split('T')[0]}.json`;
-        
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-
-        showToast('Database exported successfully!', 'success');
-    } catch (error) {
-        console.error('Export error:', error);
-        showToast('Failed to export database', 'error');
-    } finally {
-        button.disabled = false;
-        button.innerHTML = originalText;
-    }
+    });
 }
 
 async function importDatabase(file, replaceExisting) {
@@ -889,19 +876,13 @@ async function handleFileSelect(event) {
         }
     }
 
-    const button = importBtn;
-    const originalText = button.innerHTML;
-    
-    button.disabled = true;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing...';
-
-    try {
-        await importDatabase(file, shouldReplace);
-    } finally {
-        button.disabled = false;
-        button.innerHTML = originalText;
-        importFile.value = '';
-    }
+    await withButtonLoading(importBtn, ' Importing...', async () => {
+        try {
+            await importDatabase(file, shouldReplace);
+        } finally {
+            importFile.value = '';
+        }
+    });
 }
 
 // Event Listeners

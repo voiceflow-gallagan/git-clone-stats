@@ -355,31 +355,73 @@ body {
     border-color: var(--accent);
 }
 
-.sync-btn {
-    display: flex;
+/* Base button styles */
+.btn {
+    display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.5rem;
     padding: 0.75rem 1.5rem;
-    background: var(--accent);
-    color: white;
     border: none;
     border-radius: 0.5rem;
     font-size: .8rem;
+    font-weight: 500;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    line-height: 1;
 }
 
-.sync-btn:hover {
-    background: var(--accent-hover);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px var(--shadow);
 }
 
-.sync-btn:disabled {
+.btn:active {
+    transform: translateY(0);
+}
+
+.btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
     transform: none;
 }
+
+/* Button variants */
+.btn-primary {
+    background: var(--accent);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--accent-hover);
+}
+
+.btn-success {
+    background: var(--success);
+    color: white;
+}
+
+.btn-success:hover {
+    background: #047857;
+}
+
+.btn-danger {
+    background: var(--error);
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #b91c1c;
+}
+
+/* Button sizes */
+.btn-sm {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+}
+
+/* Specific button styles are now handled by base classes */
 
 /* Loading */
 .loading-container {
@@ -576,30 +618,8 @@ body {
 }
 
 .copy-btn {
-    padding: 0.75rem 1.5rem;
-    background: var(--accent);
-    border: none;
-    border-radius: 6px;
-    color: white;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
     font-size: 0.875rem;
-    font-weight: 500;
     margin-top: auto;
-}
-
-.copy-btn:hover {
-    background: var(--accent-hover);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
-}
-
-.copy-btn:active {
-    transform: translateY(0);
 }
 
 /* Toast Notifications */
@@ -923,25 +943,6 @@ html {
     box-shadow: 0 0 0 3px var(--accent-light);
 }
 
-.add-btn, .manage-repos-btn {
-    background: var(--accent);
-    color: white;
-    border: none;
-    padding: 0.75rem 1.5rem;
-    border-radius: 8px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8rem;
-}
-
-.add-btn:hover, .manage-repos-btn:hover {
-    background: var(--accent-hover);
-    transform: translateY(-1px);
-}
 
 .tracked-repos-section h3 {
     color: var(--text-primary);
@@ -987,22 +988,7 @@ html {
 }
 
 .remove-btn {
-    background: var(--error);
-    color: white;
-    border: none;
-    padding: 0.5rem 0.75rem;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
     gap: 0.25rem;
-}
-
-.remove-btn:hover {
-    background: #b91c1c;
-    transform: translateY(-1px);
 }
 
 .empty-repos {
@@ -1032,39 +1018,7 @@ html {
 }
 
 .backup-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    border: none;
-    border-radius: 6px;
     font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.export-btn {
-    background: var(--accent);
-    color: white;
-}
-
-.export-btn:hover:not(:disabled) {
-    background: var(--accent-hover);
-}
-
-.import-btn {
-    background: var(--success);
-    color: white;
-}
-
-.import-btn:hover:not(:disabled) {
-    background: #047857;
-}
-
-.backup-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
 }
 
 .import-section {
@@ -1211,30 +1165,7 @@ html {
 }
 
 .refresh-chart-btn {
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    padding: 0.5rem 1rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
     height: fit-content;
-}
-
-.refresh-chart-btn:hover {
-    background: var(--accent-hover);
-    transform: translateY(-1px);
-}
-
-.refresh-chart-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
 }
 
 .chart-container {

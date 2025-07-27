@@ -35,6 +35,17 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
         # Set the directory to serve static files from
         static_dir = Path(__file__).parent / "static"
         super().__init__(*args, directory=str(static_dir), **kwargs)
+    
+    def _send_json_response(self, data: dict, status: HTTPStatus = HTTPStatus.OK):
+        """Send a JSON response with consistent headers."""
+        self.send_response(status)
+        self.send_header("Content-type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(data, indent=2).encode('utf-8'))
+    
+    def _send_json_error(self, message: str, status: HTTPStatus = HTTPStatus.INTERNAL_SERVER_ERROR):
+        """Send a JSON error response."""
+        self._send_json_response({"success": False, "message": message}, status)
 
     def do_GET(self):
         """Handle GET requests."""
@@ -87,12 +98,7 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
         logger.info("Sync requested from web UI.")
         success, message = run_sync()
         status = HTTPStatus.OK if success else HTTPStatus.INTERNAL_SERVER_ERROR
-
-        self.send_response(status)
-        self.send_header("Content-type", "application/json")
-        self.end_headers()
-        response = {"success": success, "message": message}
-        self.wfile.write(json.dumps(response).encode('utf-8'))
+        self._send_json_response({"success": success, "message": message}, status)
 
     def get_stats_for_repo(self, repo_name: str) -> dict:
         """Retrieve statistics for a single repository."""
@@ -165,15 +171,10 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         github_username = os.environ.get('GITHUB_USERNAME', '')
-        response_data = {
+        self._send_json_response({
             "stats": stats,
             "github_username": github_username
-        }
-
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps(response_data, indent=4).encode('utf-8'))
+        })
 
     def send_tracked_repos(self):
         """Send the list of tracked repositories."""
@@ -182,10 +183,7 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
                 db_manager.setup_database()
                 tracked_repos = db_manager.get_tracked_repos()
 
-            self.send_response(HTTPStatus.OK)
-            self.send_header("Content-type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"tracked_repos": tracked_repos}).encode('utf-8'))
+            self._send_json_response({"tracked_repos": tracked_repos})
         except Exception as e:
             logger.error(f"Error getting tracked repos: {e}")
             self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Failed to get tracked repositories")
@@ -207,13 +205,12 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
                 success = db_manager.add_tracked_repo(repo_name)
 
             if success:
-                self.send_response(HTTPStatus.OK)
-                self.send_header("Content-type", "application/json")
-                self.end_headers()
-                response = {"success": True, "message": f"Repository {repo_name} added successfully"}
-                self.wfile.write(json.dumps(response).encode('utf-8'))
+                self._send_json_response({
+                    "success": True, 
+                    "message": f"Repository {repo_name} added successfully"
+                })
             else:
-                self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Failed to add repository")
+                self._send_json_error("Failed to add repository")
 
         except json.JSONDecodeError:
             self.send_error(HTTPStatus.BAD_REQUEST, "Invalid JSON data")
@@ -229,13 +226,12 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
                 success = db_manager.remove_tracked_repo(repo_name)
 
             if success:
-                self.send_response(HTTPStatus.OK)
-                self.send_header("Content-type", "application/json")
-                self.end_headers()
-                response = {"success": True, "message": f"Repository {repo_name} removed successfully"}
-                self.wfile.write(json.dumps(response).encode('utf-8'))
+                self._send_json_response({
+                    "success": True, 
+                    "message": f"Repository {repo_name} removed successfully"
+                })
             else:
-                self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Failed to remove repository")
+                self._send_json_error("Failed to remove repository")
 
         except Exception as e:
             logger.error(f"Error removing repo: {e}")
@@ -303,17 +299,11 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
                     chart_data[repo]['clones'].append(row['count'])
                     chart_data[repo]['uniques'].append(row['uniques'])
 
-            self.send_response(HTTPStatus.OK)
-            self.send_header("Content-type", "application/json")
-            self.end_headers()
-
-            response_data = {
+            self._send_json_response({
                 "chart_data": chart_data,
                 "days_requested": days,
                 "repo_filter": repo_filter
-            }
-
-            self.wfile.write(json.dumps(response_data, indent=2).encode('utf-8'))
+            })
 
         except Exception as e:
             logger.error(f"Error getting chart data: {e}")
@@ -350,9 +340,6 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
             content_type = self.headers.get('Content-Type', '')
             if 'multipart/form-data' in content_type:
                 # Handle file upload
-                import io
-                from urllib.parse import parse_qs
-
                 # Simple multipart parsing (for file uploads)
                 boundary = content_type.split('boundary=')[1].encode()
                 parts = post_data.split(b'--' + boundary)
@@ -393,13 +380,12 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
                 success = db_manager.import_database(import_data, replace_existing)
 
             if success:
-                self.send_response(HTTPStatus.OK)
-                self.send_header("Content-type", "application/json")
-                self.end_headers()
-                response = {"success": True, "message": "Database imported successfully"}
-                self.wfile.write(json.dumps(response).encode('utf-8'))
+                self._send_json_response({
+                    "success": True, 
+                    "message": "Database imported successfully"
+                })
             else:
-                self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Failed to import database")
+                self._send_json_error("Failed to import database")
 
         except json.JSONDecodeError:
             self.send_error(HTTPStatus.BAD_REQUEST, "Invalid JSON data")
