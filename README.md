@@ -1,6 +1,8 @@
 # GitHub Repository Clone Statistics Tracker
 
-Git Stats is the missing piece of GitHub analytics... even if you pay, they will only give you 14 days of history. Bizarre gap for a company built on data... anyways, Git Stats is a modern Python application for tracking and storing GitHub repository clone statistics. This tool fetches clone data from the GitHub API and maintains historical records in a SQLite database. It runs as an always on service and periodically fetches clone stats (total and unique) and displays them in an easy to use dashboard with shields.io badges available for use.
+Git Stats is the missing piece of GitHub analytics - even if you pay, they will only give you 14 days of history. Bizarre gap for a company built on data... 
+
+But I digress. Git Stats is a modern Python application for tracking and storing GitHub repository clone statistics. This tool fetches clone data from the GitHub API and maintains historical records in a SQLite database. It runs as an always on service and periodically fetches clone stats (total and unique) and displays them in an easy to use dashboard with shields.io badges available for use.
 
 
 <div align="center">
