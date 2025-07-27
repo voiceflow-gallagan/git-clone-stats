@@ -6,7 +6,6 @@ A simple web server to expose the collected clone statistics via a JSON API.
 """
 
 import http.server
-import http.server
 import json
 import logging
 import os
@@ -15,8 +14,9 @@ import sqlite3
 import threading
 import time
 from http import HTTPStatus
+from pathlib import Path
 
-from app import run_sync
+from .app import run_sync
 
 # Configure logging
 logging.basicConfig(
@@ -29,6 +29,11 @@ DB_PATH = "github_stats.db"
 
 class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
     """A custom request handler to serve clone statistics."""
+
+    def __init__(self, *args, **kwargs):
+        # Set the directory to serve static files from
+        static_dir = Path(__file__).parent / "static"
+        super().__init__(*args, directory=str(static_dir), **kwargs)
 
     def do_GET(self):
         """Handle GET requests."""
@@ -166,5 +171,10 @@ def run_server(port=8124):
         httpd.serve_forever()
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the server script."""
     run_server()
+
+
+if __name__ == "__main__":
+    main()
