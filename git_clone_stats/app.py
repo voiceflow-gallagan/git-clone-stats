@@ -6,7 +6,6 @@ A modern Python application for tracking and storing GitHub repository clone sta
 This tool fetches clone data from the GitHub API and maintains historical records in a SQLite database.
 """
 
-import json
 import logging
 import os
 import sqlite3
@@ -103,7 +102,7 @@ class DatabaseManager:
     def get_existing_timestamps(self, repo: str) -> List[str]:
         """Get all existing timestamps for a given repository."""
         rows = self._execute_query(
-            "SELECT timestamp FROM clone_history WHERE repo = ?", 
+            "SELECT timestamp FROM clone_history WHERE repo = ?",
             (repo,)
         )
         return [row['timestamp'] for row in rows] if rows else []
@@ -180,8 +179,8 @@ class DatabaseManager:
     def get_repo_stars(self, repo: str) -> Optional[int]:
         """Get star count for a repository."""
         row = self._execute_query(
-            "SELECT star_count FROM repo_stars WHERE repo = ?", 
-            (repo,), 
+            "SELECT star_count FROM repo_stars WHERE repo = ?",
+            (repo,),
             fetch_all=False
         )
         return row[0] if row else None
@@ -199,7 +198,9 @@ class DatabaseManager:
                 }
 
                 # Export clone history
-                cursor = self.conn.execute("SELECT repo, timestamp, count, uniques FROM clone_history ORDER BY repo, timestamp")
+                cursor = self.conn.execute(
+                    "SELECT repo, timestamp, count, uniques FROM clone_history ORDER BY repo, timestamp"
+                )
                 for row in cursor.fetchall():
                     export_data["clone_history"].append({
                         "repo": row["repo"],
@@ -226,8 +227,11 @@ class DatabaseManager:
                         "last_updated": row["last_updated"]
                     })
 
-                self.logger.info(f"Database exported successfully with {len(export_data['clone_history'])} clone records, "
-                               f"{len(export_data['tracked_repos'])} tracked repos, and {len(export_data['repo_stars'])} star records")
+                self.logger.info(
+                    f"Database exported successfully with {len(export_data['clone_history'])} clone records, "
+                    f"{len(export_data['tracked_repos'])} tracked repos, "
+                    f"and {len(export_data['repo_stars'])} star records"
+                )
                 return export_data
 
         except sqlite3.Error as e:
@@ -250,7 +254,7 @@ class DatabaseManager:
                 with self.conn:
                     self.conn.executemany(
                         "INSERT OR IGNORE INTO clone_history (repo, timestamp, count, uniques) VALUES (?, ?, ?, ?)",
-                        [(record["repo"], record["timestamp"], record["count"], record["uniques"]) 
+                        [(record["repo"], record["timestamp"], record["count"], record["uniques"])
                          for record in clone_records]
                     )
                 self.logger.info(f"Imported {len(clone_records)} clone history records")
@@ -261,7 +265,7 @@ class DatabaseManager:
                 with self.conn:
                     self.conn.executemany(
                         "INSERT OR REPLACE INTO tracked_repos (repo_name, added_at, is_active) VALUES (?, ?, ?)",
-                        [(record["repo_name"], record["added_at"], record["is_active"]) 
+                        [(record["repo_name"], record["added_at"], record["is_active"])
                          for record in tracked_repos]
                     )
                 self.logger.info(f"Imported {len(tracked_repos)} tracked repo records")
@@ -272,7 +276,7 @@ class DatabaseManager:
                 with self.conn:
                     self.conn.executemany(
                         "INSERT OR REPLACE INTO repo_stars (repo, star_count, last_updated) VALUES (?, ?, ?)",
-                        [(record["repo"], record["star_count"], record["last_updated"]) 
+                        [(record["repo"], record["star_count"], record["last_updated"])
                          for record in star_records]
                     )
                 self.logger.info(f"Imported {len(star_records)} star count records")
@@ -436,9 +440,7 @@ def run_sync():
         # Setup and run tracker
         with DatabaseManager(db_path) as db_manager:
             db_manager.setup_database()
-            
             # No default repos to migrate since repos list is empty
-            
             tracker = GitHubStatsTracker(github_token, github_username, repos, db_manager)
             tracker.update_all_repositories()
         logger.info("Sync successful")

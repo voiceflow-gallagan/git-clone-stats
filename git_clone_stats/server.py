@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = "github_stats.db"
 
+
 class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
     """A custom request handler to serve clone statistics."""
 
@@ -35,14 +36,14 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
         # Set the directory to serve static files from
         static_dir = Path(__file__).parent / "static"
         super().__init__(*args, directory=str(static_dir), **kwargs)
-    
+
     def _send_json_response(self, data: dict, status: HTTPStatus = HTTPStatus.OK):
         """Send a JSON response with consistent headers."""
         self.send_response(status)
         self.send_header("Content-type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps(data, indent=2).encode('utf-8'))
-    
+
     def _send_json_error(self, message: str, status: HTTPStatus = HTTPStatus.INTERNAL_SERVER_ERROR):
         """Send a JSON error response."""
         self._send_json_response({"success": False, "message": message}, status)
@@ -66,7 +67,9 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
                 repo_name = match.group(1)
                 self.send_badge(repo_name)
             else:
-                self.send_error(HTTPStatus.BAD_REQUEST, "Invalid badge URL format. Use /badge/<repo-name>")
+                self.send_error(
+                    HTTPStatus.BAD_REQUEST, "Invalid badge URL format. Use /badge/<repo-name>"
+                )
         else:
             super().do_GET()
 
@@ -106,13 +109,14 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
             with sqlite3.connect(DB_PATH) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.execute(
-                    "SELECT SUM(count) as total_clones, SUM(uniques) as total_uniques FROM clone_history WHERE repo = ?",
+                    "SELECT SUM(count) as total_clones, SUM(uniques) as total_uniques "
+                    "FROM clone_history WHERE repo = ?",
                     (repo_name,)
                 )
                 row = cursor.fetchone()
-                if row and row['total_clones'] is not None:
-                    return dict(row)
-                return {"total_clones": 0, "total_uniques": 0}
+                return dict(row) if row and row['total_clones'] is not None else {
+                    "total_clones": 0, "total_uniques": 0
+                }
         except sqlite3.Error as e:
             logger.error(f"Database error for repo {repo_name}: {e}")
             return None
@@ -142,13 +146,17 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
                 conn.row_factory = sqlite3.Row
 
                 # Get clone history
-                cursor = conn.execute("SELECT repo, timestamp, count, uniques FROM clone_history ORDER BY repo, timestamp")
+                cursor = conn.execute(
+                    "SELECT repo, timestamp, count, uniques FROM clone_history ORDER BY repo, timestamp"
+                )
                 clone_rows = cursor.fetchall()
 
                 # Get star counts
                 cursor = conn.execute("SELECT repo, star_count FROM repo_stars")
                 star_rows = cursor.fetchall()
-                star_counts = {row['repo']: row['star_count'] for row in star_rows}
+                star_counts = {
+                    row['repo']: row['star_count'] for row in star_rows
+                }
 
                 # Combine the data
                 stats = []
@@ -206,7 +214,7 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             if success:
                 self._send_json_response({
-                    "success": True, 
+                    "success": True,
                     "message": f"Repository {repo_name} added successfully"
                 })
             else:
@@ -227,7 +235,7 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             if success:
                 self._send_json_response({
-                    "success": True, 
+                    "success": True,
                     "message": f"Repository {repo_name} removed successfully"
                 })
             else:
@@ -318,7 +326,10 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-type", "application/json")
-            self.send_header("Content-Disposition", f"attachment; filename=github_stats_backup_{export_data['export_timestamp'][:10]}.json")
+            self.send_header(
+                "Content-Disposition",
+                f"attachment; filename=github_stats_backup_{export_data['export_timestamp'][:10]}.json"
+            )
             self.end_headers()
             self.wfile.write(json.dumps(export_data, indent=2).encode('utf-8'))
 
@@ -381,7 +392,7 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             if success:
                 self._send_json_response({
-                    "success": True, 
+                    "success": True,
                     "message": "Database imported successfully"
                 })
             else:
@@ -392,6 +403,7 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error importing database: {e}")
             self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Failed to import database")
+
 
 def run_background_sync():
     """Periodically run the sync task based on the configured interval."""

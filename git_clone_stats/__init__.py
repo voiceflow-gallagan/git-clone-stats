@@ -13,7 +13,7 @@ from .app import GitHubStatsTracker, DatabaseManager, CloneRecord, run_sync
 
 __all__ = [
     "GitHubStatsTracker",
-    "DatabaseManager", 
+    "DatabaseManager",
     "CloneRecord",
     "run_sync",
 ]

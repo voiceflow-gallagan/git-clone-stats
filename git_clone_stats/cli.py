@@ -8,7 +8,6 @@ import sys
 from typing import Optional
 
 from .app import main as app_main
-from .server import main as server_main
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -21,7 +20,7 @@ def create_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Sync command
-    sync_parser = subparsers.add_parser("sync", help="Synchronize clone statistics from GitHub")
+    subparsers.add_parser("sync", help="Synchronize clone statistics from GitHub")
 
     # Server command
     server_parser = subparsers.add_parser("server", help="Start the web dashboard server")
