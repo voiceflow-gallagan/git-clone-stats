@@ -1,6 +1,6 @@
 # GitHub Repository Clone Statistics Tracker
 
-A modern Python application for tracking and storing GitHub repository clone statistics. This tool fetches clone data from the GitHub API and maintains historical records in a SQLite database.
+A simple Python application for tracking and storing GitHub repository clone statistics. This tool fetches clone data from the GitHub API and maintains historical records in a SQLite database. It runs as an always on service and periodically fetches clone stats (total and unique) and displays them in an easy to use dashboard with shields.io badges available for use.
 
 ## Features
 
