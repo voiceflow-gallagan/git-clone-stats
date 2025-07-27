@@ -9,11 +9,6 @@ But I digress. Git Stats is a modern Python application for tracking and storing
 <video width=832 src="https://github.com/user-attachments/assets/ba4b670f-f0d3-4db6-9c18-e9480486ba84"></video>
 </div>
 
-
-<div align="center">
-<img width="70%" height="70%" alt="image" src="https://github.com/user-attachments/assets/f16b879d-f629-49a0-9fec-c17e827156b2" />
-</div>
-
 ---
 
 ## Features
@@ -159,6 +154,10 @@ git-clone-stats server
 ### User Interface
 
 Navigate to `http://localhost:8000` in your web browser to access the user interface. The dashboard provides two viewing modes:
+
+<div align="center">
+<img width="70%" height="70%" alt="image" src="https://github.com/user-attachments/assets/f16b879d-f629-49a0-9fec-c17e827156b2" />
+</div>
 
 #### Card View (Default)
 Displays a card for each repository with:
