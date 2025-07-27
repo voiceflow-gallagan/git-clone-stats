@@ -4,6 +4,9 @@ A simple Python application for tracking and storing GitHub repository clone sta
 <div align="center">
 <img width="70%" height="70%" alt="image" src="https://github.com/user-attachments/assets/f16b879d-f629-49a0-9fec-c17e827156b2" />
 </div>
+
+---
+
 ## Features
 
 - Fetches repository clone statistics (total clones and unique cloners) from the GitHub API.
