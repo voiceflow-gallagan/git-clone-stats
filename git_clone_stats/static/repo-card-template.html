@@ -1,0 +1,45 @@
+<div class="repo-header">
+    <div class="repo-icon">
+        <i class="fab fa-github"></i>
+    </div>
+    <h3 class="repo-name">{{repo.name}}</h3>
+    <div class="repo-stars">
+        <i class="fas fa-star"></i>
+        <span class="star-count">{{repo.star_count}}</span>
+    </div>
+</div>
+
+<div class="repo-stats">
+    <div class="stat-item">
+        <div class="stat-number">{{repo.total_clones}}</div>
+        <div class="stat-label-small">Total Clones</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-number">{{repo.total_uniques}}</div>
+        <div class="stat-label-small">Unique Cloners</div>
+    </div>
+</div>
+
+<div class="repo-dates">
+    <div class="date-item">
+        <div class="date-label">First Collected</div>
+        <div class="date-value">{{repo.first_collected_formatted}}</div>
+    </div>
+    <div class="date-item">
+        <div class="date-label">Last Sync</div>
+        <div class="date-value">{{repo.last_sync_formatted}}</div>
+    </div>
+</div>
+
+<div class="badge-container">
+    <div class="badge-title">
+        Add Stat Badge to GitHub
+    </div>
+    <div class="badge-preview">
+        <img src="{{badgeUrl}}" alt="Clone badge for {{repo.name}}" />
+    </div>
+    <button class="copy-btn" onclick="copyToClipboard('{{markdownCode}}', this)">
+        <i class="fas fa-copy"></i>
+        Copy Markdown
+    </button>
+</div>

@@ -69,6 +69,20 @@ class DatabaseManager:
                         PRIMARY KEY (repo, timestamp)
                     )
                 """)
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS tracked_repos (
+                        repo_name TEXT PRIMARY KEY,
+                        added_at TEXT NOT NULL,
+                        is_active INTEGER DEFAULT 1
+                    )
+                """)
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS repo_stars (
+                        repo TEXT PRIMARY KEY,
+                        star_count INTEGER NOT NULL,
+                        last_updated TEXT NOT NULL
+                    )
+                """)
             self.logger.info("Database setup complete.")
         except sqlite3.Error as e:
             self.logger.error(f"Database setup failed: {e}")
@@ -105,6 +119,171 @@ class DatabaseManager:
         except sqlite3.Error as e:
             self.logger.error(f"Failed to insert clone records for {repo}: {e}")
             raise
+
+    def get_tracked_repos(self) -> List[str]:
+        """Get all actively tracked repositories."""
+        try:
+            with self.conn:
+                cursor = self.conn.execute(
+                    "SELECT repo_name FROM tracked_repos WHERE is_active = 1"
+                )
+                return [row[0] for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            self.logger.error(f"Failed to get tracked repos: {e}")
+            return []
+
+    def add_tracked_repo(self, repo_name: str) -> bool:
+        """Add a repository to tracking."""
+        try:
+            with self.conn:
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO tracked_repos (repo_name, added_at, is_active) VALUES (?, ?, 1)",
+                    (repo_name, datetime.now().isoformat())
+                )
+            self.logger.info(f"Added {repo_name} to tracked repos.")
+            return True
+        except sqlite3.Error as e:
+            self.logger.error(f"Failed to add tracked repo {repo_name}: {e}")
+            return False
+
+    def remove_tracked_repo(self, repo_name: str) -> bool:
+        """Remove a repository from tracking."""
+        try:
+            with self.conn:
+                self.conn.execute(
+                    "UPDATE tracked_repos SET is_active = 0 WHERE repo_name = ?",
+                    (repo_name,)
+                )
+            self.logger.info(f"Removed {repo_name} from tracked repos.")
+            return True
+        except sqlite3.Error as e:
+            self.logger.error(f"Failed to remove tracked repo {repo_name}: {e}")
+            return False
+
+    def update_repo_stars(self, repo: str, star_count: int) -> bool:
+        """Update star count for a repository."""
+        try:
+            with self.conn:
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO repo_stars (repo, star_count, last_updated) VALUES (?, ?, ?)",
+                    (repo, star_count, datetime.now().isoformat())
+                )
+            self.logger.info(f"Updated star count for {repo}: {star_count}")
+            return True
+        except sqlite3.Error as e:
+            self.logger.error(f"Failed to update star count for {repo}: {e}")
+            return False
+
+    def get_repo_stars(self, repo: str) -> Optional[int]:
+        """Get star count for a repository."""
+        try:
+            with self.conn:
+                cursor = self.conn.execute(
+                    "SELECT star_count FROM repo_stars WHERE repo = ?", (repo,)
+                )
+                row = cursor.fetchone()
+                return row[0] if row else None
+        except sqlite3.Error as e:
+            self.logger.error(f"Failed to get star count for {repo}: {e}")
+            return None
+
+    def export_database(self) -> Dict:
+        """Export the complete database to a dictionary."""
+        try:
+            with self.conn:
+                export_data = {
+                    "export_timestamp": datetime.now().isoformat(),
+                    "version": "1.0",
+                    "clone_history": [],
+                    "tracked_repos": [],
+                    "repo_stars": []
+                }
+
+                # Export clone history
+                cursor = self.conn.execute("SELECT repo, timestamp, count, uniques FROM clone_history ORDER BY repo, timestamp")
+                for row in cursor.fetchall():
+                    export_data["clone_history"].append({
+                        "repo": row["repo"],
+                        "timestamp": row["timestamp"],
+                        "count": row["count"],
+                        "uniques": row["uniques"]
+                    })
+
+                # Export tracked repos
+                cursor = self.conn.execute("SELECT repo_name, added_at, is_active FROM tracked_repos")
+                for row in cursor.fetchall():
+                    export_data["tracked_repos"].append({
+                        "repo_name": row["repo_name"],
+                        "added_at": row["added_at"],
+                        "is_active": row["is_active"]
+                    })
+
+                # Export star counts
+                cursor = self.conn.execute("SELECT repo, star_count, last_updated FROM repo_stars")
+                for row in cursor.fetchall():
+                    export_data["repo_stars"].append({
+                        "repo": row["repo"],
+                        "star_count": row["star_count"],
+                        "last_updated": row["last_updated"]
+                    })
+
+                self.logger.info(f"Database exported successfully with {len(export_data['clone_history'])} clone records, "
+                               f"{len(export_data['tracked_repos'])} tracked repos, and {len(export_data['repo_stars'])} star records")
+                return export_data
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Failed to export database: {e}")
+            raise
+
+    def import_database(self, import_data: Dict, replace_existing: bool = False) -> bool:
+        """Import data from a dictionary into the database."""
+        try:
+            if replace_existing:
+                self.logger.info("Clearing existing data before import...")
+                with self.conn:
+                    self.conn.execute("DELETE FROM clone_history")
+                    self.conn.execute("DELETE FROM tracked_repos")
+                    self.conn.execute("DELETE FROM repo_stars")
+
+            # Import clone history
+            clone_records = import_data.get("clone_history", [])
+            if clone_records:
+                with self.conn:
+                    self.conn.executemany(
+                        "INSERT OR IGNORE INTO clone_history (repo, timestamp, count, uniques) VALUES (?, ?, ?, ?)",
+                        [(record["repo"], record["timestamp"], record["count"], record["uniques"]) 
+                         for record in clone_records]
+                    )
+                self.logger.info(f"Imported {len(clone_records)} clone history records")
+
+            # Import tracked repos
+            tracked_repos = import_data.get("tracked_repos", [])
+            if tracked_repos:
+                with self.conn:
+                    self.conn.executemany(
+                        "INSERT OR REPLACE INTO tracked_repos (repo_name, added_at, is_active) VALUES (?, ?, ?)",
+                        [(record["repo_name"], record["added_at"], record["is_active"]) 
+                         for record in tracked_repos]
+                    )
+                self.logger.info(f"Imported {len(tracked_repos)} tracked repo records")
+
+            # Import star counts
+            star_records = import_data.get("repo_stars", [])
+            if star_records:
+                with self.conn:
+                    self.conn.executemany(
+                        "INSERT OR REPLACE INTO repo_stars (repo, star_count, last_updated) VALUES (?, ?, ?)",
+                        [(record["repo"], record["star_count"], record["last_updated"]) 
+                         for record in star_records]
+                    )
+                self.logger.info(f"Imported {len(star_records)} star count records")
+
+            self.logger.info("Database import completed successfully")
+            return True
+
+        except (sqlite3.Error, KeyError, TypeError) as e:
+            self.logger.error(f"Failed to import database: {e}")
+            return False
 
 
 class GitHubStatsTracker:
@@ -150,6 +329,19 @@ class GitHubStatsTracker:
             self.logger.error(f"Error fetching data for {repo}: {e}")
             raise
 
+    def _fetch_repo_metadata(self, repo: str) -> Dict:
+        """Fetch repository metadata from GitHub API."""
+        url = f"https://api.github.com/repos/{self.github_username}/{repo}"
+
+        try:
+            response = self.session.get(url, timeout=30)
+            response.raise_for_status()
+            return response.json()
+
+        except requests.RequestException as e:
+            self.logger.error(f"Error fetching metadata for {repo}: {e}")
+            raise
+
     def _update_repository(self, repo: str) -> None:
         """Update clone data for a single repository."""
         self.logger.info(f"Updating data for {repo}")
@@ -162,6 +354,7 @@ class GitHubStatsTracker:
         # Fetch new data from GitHub
         self.logger.info("Fetching data from GitHub...")
         try:
+            # Fetch clone data
             github_data = self._fetch_clone_data(repo)
             clone_entries = github_data.get("clones", [])
 
@@ -180,6 +373,12 @@ class GitHubStatsTracker:
             else:
                 self.logger.info(f"No new records to add for {repo}")
 
+            # Fetch and update star count
+            self.logger.info("Fetching repository metadata...")
+            metadata = self._fetch_repo_metadata(repo)
+            star_count = metadata.get("stargazers_count", 0)
+            self.db_manager.update_repo_stars(repo, star_count)
+
             self.logger.info(f"Update for {repo} completed successfully")
 
         except Exception as e:
@@ -190,7 +389,11 @@ class GitHubStatsTracker:
         """Update clone data for all configured repositories."""
         self.logger.info("Starting update for all repositories")
 
-        for repo in self.repos:
+        # Get tracked repos from database if available, otherwise use configured repos
+        tracked_repos = self.db_manager.get_tracked_repos()
+        repos_to_update = tracked_repos if tracked_repos else self.repos
+
+        for repo in repos_to_update:
             try:
                 print("=" * 60)
                 print(f"   Updating data for {repo}")
@@ -217,7 +420,7 @@ def load_configuration() -> Tuple[str, str, List[str], str]:
         raise ValueError("GITHUB_USERNAME environment variable not set.")
 
     # Repository list - could be loaded from config file in the future
-    repos = ['reddacted', 'reclaimed', 'google_workspace_mcp', 'netshow']
+    repos = ['reddacted', 'reclaimed', 'google_workspace_mcp', 'netshow', 'mcpo', 'quantconnect-mcp', 'open-webui-postgres-migration']
 
     db_path = "github_stats.db"
 
@@ -234,6 +437,14 @@ def run_sync():
         # Setup and run tracker
         with DatabaseManager(db_path) as db_manager:
             db_manager.setup_database()
+            
+            # Migrate existing hardcoded repos to database if no tracked repos exist
+            tracked_repos = db_manager.get_tracked_repos()
+            if not tracked_repos and repos:
+                logger.info("Migrating hardcoded repos to database...")
+                for repo in repos:
+                    db_manager.add_tracked_repo(repo)
+            
             tracker = GitHubStatsTracker(github_token, github_username, repos, db_manager)
             tracker.update_all_repositories()
         logger.info("Sync successful")

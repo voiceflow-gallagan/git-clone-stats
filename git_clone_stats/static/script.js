@@ -50,6 +50,342 @@ function showToast(message, type = 'success') {
 let allRepos = [];
 let filteredRepos = [];
 let githubUsername = '';
+let repoCardTemplate = '';
+
+// Chart view state
+let currentView = 'cards'; // 'cards' or 'charts'
+let chartInstances = new Map(); // Store chart instances for cleanup
+
+// Helper function to format dates
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = now - date;
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+        return 'Today';
+    } else if (diffDays === 1) {
+        return 'Yesterday';
+    } else if (diffDays < 7) {
+        return `${diffDays} days ago`;
+    } else if (diffDays < 30) {
+        const weeks = Math.floor(diffDays / 7);
+        return `${weeks} week${weeks > 1 ? 's' : ''} ago`;
+    } else if (diffDays < 365) {
+        const months = Math.floor(diffDays / 30);
+        return `${months} month${months > 1 ? 's' : ''} ago`;
+    } else {
+        const years = Math.floor(diffDays / 365);
+        return `${years} year${years > 1 ? 's' : ''} ago`;
+    }
+}
+
+// Load repository card template
+async function loadTemplate() {
+    try {
+        const response = await fetch('/static/repo-card-template.html');
+        if (!response.ok) throw new Error('Failed to load template');
+        repoCardTemplate = await response.text();
+    } catch (error) {
+        console.error('Error loading template:', error);
+        // Fallback to inline template if loading fails
+        repoCardTemplate = `
+            <div class="repo-header">
+                <div class="repo-icon">
+                    <i class="fab fa-github"></i>
+                </div>
+                <h3 class="repo-name">{{repo.name}}</h3>
+                <div class="repo-stars">
+                    <i class="fas fa-star"></i>
+                    <span class="star-count">{{repo.star_count}}</span>
+                </div>
+            </div>
+            <div class="repo-stats">
+                <div class="stat-item">
+                    <div class="stat-number">{{repo.total_clones}}</div>
+                    <div class="stat-label-small">Total Clones</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">{{repo.total_uniques}}</div>
+                    <div class="stat-label-small">Unique Cloners</div>
+                </div>
+            </div>
+            <div class="repo-dates">
+                <div class="date-item">
+                    <div class="date-label">First Collected</div>
+                    <div class="date-value">{{repo.first_collected_formatted}}</div>
+                </div>
+                <div class="date-item">
+                    <div class="date-label">Last Sync</div>
+                    <div class="date-value">{{repo.last_sync_formatted}}</div>
+                </div>
+            </div>
+            <div class="badge-container">
+                <div class="badge-title">
+                    Add Stat Badge to GitHub
+                </div>
+                <div class="badge-preview">
+                    <img src="{{badgeUrl}}" alt="Clone badge for {{repo.name}}" />
+                </div>
+                <button class="copy-btn" onclick="copyToClipboard('{{markdownCode}}', this)">
+                    <i class="fas fa-copy"></i>
+                    Copy Markdown
+                </button>
+            </div>
+        `;
+    }
+}
+
+// Simple template engine
+function renderTemplate(template, data) {
+    return template.replace(/\{\{([^}]+)\}\}/g, (_, key) => {
+        const keys = key.trim().split('.');
+        let value = data;
+        for (const k of keys) {
+            value = value?.[k];
+        }
+        return value !== undefined ? value : '';
+    });
+}
+
+// View Management
+function switchView(view) {
+    currentView = view;
+    
+    // Update button states
+    cardViewBtn.classList.toggle('active', view === 'cards');
+    chartViewBtn.classList.toggle('active', view === 'charts');
+    
+    // Update visibility
+    chartControls.style.display = view === 'charts' ? 'block' : 'none';
+    chartContainer.style.display = view === 'charts' ? 'block' : 'none';
+    reposContainer.style.display = view === 'cards' ? 'grid' : 'none';
+    
+    // Update search/sort controls relevance
+    searchInput.parentElement.style.display = view === 'cards' ? 'flex' : 'none';
+    sortSelect.parentElement.style.display = view === 'cards' ? 'block' : 'none';
+    
+    if (view === 'charts') {
+        updateRepoFilterOptions();
+        fetchAndRenderCharts();
+    }
+}
+
+// Chart Data Management
+async function fetchChartData(days = 30, repo = null) {
+    try {
+        let url = `/chart-data?days=${days}`;
+        if (repo) {
+            url += `&repo=${encodeURIComponent(repo)}`;
+        }
+        
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to fetch chart data');
+        
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching chart data:', error);
+        throw error;
+    }
+}
+
+function updateRepoFilterOptions() {
+    // Clear existing options except "All repositories"
+    repoFilter.innerHTML = '<option value="">All repositories</option>';
+    
+    // Add options for each repository
+    allRepos.forEach(repo => {
+        const option = document.createElement('option');
+        option.value = repo.name;
+        option.textContent = repo.name;
+        repoFilter.appendChild(option);
+    });
+}
+
+// Chart Rendering
+function createChart(container, data, repoName) {
+    const canvas = document.createElement('canvas');
+    container.appendChild(canvas);
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Get theme colors
+    const computedStyle = getComputedStyle(document.documentElement);
+    const accentColor = computedStyle.getPropertyValue('--accent').trim();
+    const uniquesColor = '#10b981';
+    const textColor = computedStyle.getPropertyValue('--text-primary').trim();
+    const gridColor = computedStyle.getPropertyValue('--border').trim();
+    
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.labels,
+            datasets: [
+                {
+                    label: 'Total Clones',
+                    data: data.clones,
+                    borderColor: accentColor,
+                    backgroundColor: accentColor + '20',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                },
+                {
+                    label: 'Unique Clones',
+                    data: data.uniques,
+                    borderColor: uniquesColor,
+                    backgroundColor: uniquesColor + '20',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            plugins: {
+                legend: {
+                    display: false // We'll use custom legend in the header
+                },
+                tooltip: {
+                    backgroundColor: computedStyle.getPropertyValue('--bg-primary').trim(),
+                    titleColor: textColor,
+                    bodyColor: textColor,
+                    borderColor: gridColor,
+                    borderWidth: 1,
+                    cornerRadius: 8,
+                    displayColors: true,
+                    titleAlign: 'left',
+                    bodyAlign: 'left'
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        color: gridColor,
+                        borderColor: gridColor
+                    },
+                    ticks: {
+                        color: textColor,
+                        maxTicksLimit: 7
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: gridColor,
+                        borderColor: gridColor
+                    },
+                    ticks: {
+                        color: textColor,
+                        callback: function(value) {
+                            return Number.isInteger(value) ? value : '';
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
+    return chart;
+}
+
+async function fetchAndRenderCharts() {
+    try {
+        showChartLoading(true);
+        
+        const days = parseInt(timeFilter.value);
+        const selectedRepo = repoFilter.value;
+        
+        const chartData = await fetchChartData(days, selectedRepo);
+        renderCharts(chartData);
+        
+    } catch (error) {
+        console.error('Error rendering charts:', error);
+        showToast('Failed to load chart data', 'error');
+    } finally {
+        showChartLoading(false);
+    }
+}
+
+function renderCharts(chartData) {
+    // Clean up existing charts
+    chartInstances.forEach(chart => chart.destroy());
+    chartInstances.clear();
+    
+    // Clear wrapper
+    chartsWrapper.innerHTML = '';
+    
+    const repos = chartData.chart_data;
+    const repoNames = Object.keys(repos);
+    
+    if (repoNames.length === 0) {
+        chartsWrapper.innerHTML = `
+            <div class="empty-chart">
+                <i class="fas fa-chart-line"></i>
+                <h3>No chart data available</h3>
+                <p>Try adjusting your time period or repository filter, or sync your data first.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    repoNames.forEach(repoName => {
+        const repoData = repos[repoName];
+        
+        if (repoData.labels.length === 0) {
+            return; // Skip repositories with no data
+        }
+        
+        // Calculate totals for this period
+        const totalClones = repoData.clones.reduce((sum, count) => sum + count, 0);
+        const totalUniques = repoData.uniques.reduce((sum, count) => sum + count, 0);
+        
+        // Create chart container
+        const chartItem = document.createElement('div');
+        chartItem.className = 'chart-item';
+        
+        chartItem.innerHTML = `
+            <div class="chart-header">
+                <h3 class="chart-title">
+                    <i class="fab fa-github"></i>
+                    ${repoName}
+                </h3>
+                <div class="chart-stats">
+                    <div class="chart-stat">
+                        <div class="chart-stat-dot clones"></div>
+                        Total Clones: ${totalClones.toLocaleString()}
+                    </div>
+                    <div class="chart-stat">
+                        <div class="chart-stat-dot uniques"></div>
+                        Unique Clones: ${totalUniques.toLocaleString()}
+                    </div>
+                </div>
+            </div>
+            <div class="chart-canvas-container"></div>
+        `;
+        
+        chartsWrapper.appendChild(chartItem);
+        
+        // Create and store chart
+        const canvasContainer = chartItem.querySelector('.chart-canvas-container');
+        const chart = createChart(canvasContainer, repoData, repoName);
+        chartInstances.set(repoName, chart);
+    });
+}
+
+function showChartLoading(show) {
+    chartLoading.style.display = show ? 'flex' : 'none';
+    chartsWrapper.style.display = show ? 'none' : 'grid';
+}
 
 // DOM Elements
 const reposContainer = document.getElementById('repos-container');
@@ -57,9 +393,30 @@ const loadingContainer = document.getElementById('loading');
 const searchInput = document.getElementById('search-input');
 const sortSelect = document.getElementById('sort-select');
 const syncButton = document.getElementById('sync-button');
+const manageReposButton = document.getElementById('manage-repos-button');
+const repoModal = document.getElementById('repo-modal');
+const modalClose = document.getElementById('modal-close');
+const newRepoInput = document.getElementById('new-repo-input');
+const addRepoBtn = document.getElementById('add-repo-btn');
+const trackedReposList = document.getElementById('tracked-repos-list');
+const exportBtn = document.getElementById('export-btn');
+const importBtn = document.getElementById('import-btn');
+const importFile = document.getElementById('import-file');
+const replaceExisting = document.getElementById('replace-existing');
 const totalReposEl = document.getElementById('total-repos');
 const totalClonesEl = document.getElementById('total-clones');
 const totalUniquesEl = document.getElementById('total-uniques');
+
+// Chart view elements
+const cardViewBtn = document.getElementById('card-view-btn');
+const chartViewBtn = document.getElementById('chart-view-btn');
+const chartControls = document.getElementById('chart-controls');
+const chartContainer = document.getElementById('chart-container');
+const chartLoading = document.getElementById('chart-loading');
+const chartsWrapper = document.getElementById('charts-wrapper');
+const timeFilter = document.getElementById('time-filter');
+const repoFilter = document.getElementById('repo-filter');
+const refreshChartBtn = document.getElementById('refresh-chart-btn');
 
 // Fetch Statistics
 async function fetchStats() {
@@ -89,6 +446,7 @@ function processStats(stats) {
                 name: record.repo,
                 total_clones: 0,
                 total_uniques: 0,
+                star_count: record.star_count || 0,
                 history: []
             };
         }
@@ -101,6 +459,17 @@ function processStats(stats) {
         });
         return acc;
     }, {});
+
+    // Calculate date ranges for each repo
+    Object.values(repos).forEach(repo => {
+        if (repo.history.length > 0) {
+            // Sort history by timestamp to ensure correct order
+            repo.history.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            
+            repo.first_collected = repo.history[0].timestamp;
+            repo.last_sync = repo.history[repo.history.length - 1].timestamp;
+        }
+    });
 
     allRepos = Object.values(repos);
     filteredRepos = [...allRepos];
@@ -169,34 +538,22 @@ function createRepoCard(repo, index) {
     const badgeUrl = `/badge/${repo.name}`;
     const markdownCode = `[![Clones](${window.location.origin}${badgeUrl})](https://github.com/${githubUsername}/${repo.name}/graphs/traffic)`;
 
-    card.innerHTML = `
-        <div class="repo-header">
-            <div class="repo-icon">
-                <i class="fab fa-github"></i>
-            </div>
-            <h3 class="repo-name">${repo.name}</h3>
-        </div>
+    // Prepare template data
+    const templateData = {
+        repo: {
+            name: repo.name,
+            total_clones: repo.total_clones.toLocaleString(),
+            total_uniques: repo.total_uniques.toLocaleString(),
+            star_count: repo.star_count.toLocaleString(),
+            first_collected_formatted: repo.first_collected ? formatDate(repo.first_collected) : 'N/A',
+            last_sync_formatted: repo.last_sync ? formatDate(repo.last_sync) : 'N/A'
+        },
+        badgeUrl: badgeUrl,
+        markdownCode: markdownCode
+    };
 
-        <div class="repo-stats">
-            <div class="stat-item">
-                <div class="stat-number">${repo.total_clones.toLocaleString()}</div>
-                <div class="stat-label-small">Total Clones</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-number">${repo.total_uniques.toLocaleString()}</div>
-                <div class="stat-label-small">Unique Cloners</div>
-            </div>
-        </div>
-
-        <div class="badge-container">
-            <img src="${badgeUrl}" alt="Clone badge for ${repo.name}" style="max-width: 100%;">
-        </div>
-
-        <button class="copy-btn" onclick="copyToClipboard('${markdownCode}', this)">
-            <i class="fas fa-copy"></i>
-            <span>Copy Markdown</span>
-        </button>
-    `;
+    // Render template
+    card.innerHTML = renderTemplate(repoCardTemplate, templateData);
 
     return card;
 }
@@ -291,14 +648,305 @@ function showLoading(show) {
     reposContainer.style.display = show ? 'none' : 'grid';
 }
 
+// Repository Management Functions
+async function fetchTrackedRepos() {
+    try {
+        const response = await fetch('/tracked-repos');
+        if (!response.ok) throw new Error('Failed to fetch tracked repos');
+        const data = await response.json();
+        return data.tracked_repos;
+    } catch (error) {
+        console.error('Error fetching tracked repos:', error);
+        showToast('Failed to load tracked repositories', 'error');
+        return [];
+    }
+}
+
+async function addTrackedRepo(repoName) {
+    try {
+        const response = await fetch('/tracked-repos', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ repo_name: repoName })
+        });
+        
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(error);
+        }
+        
+        const result = await response.json();
+        showToast(result.message, 'success');
+        return true;
+    } catch (error) {
+        console.error('Error adding repo:', error);
+        showToast(`Failed to add repository: ${error.message}`, 'error');
+        return false;
+    }
+}
+
+async function removeTrackedRepo(repoName) {
+    try {
+        const response = await fetch(`/tracked-repos/${repoName}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(error);
+        }
+        
+        const result = await response.json();
+        showToast(result.message, 'success');
+        return true;
+    } catch (error) {
+        console.error('Error removing repo:', error);
+        showToast(`Failed to remove repository: ${error.message}`, 'error');
+        return false;
+    }
+}
+
+function renderTrackedRepos(repos) {
+    if (repos.length === 0) {
+        trackedReposList.innerHTML = `
+            <div class="empty-repos">
+                <i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 1rem; color: var(--text-muted);"></i>
+                <p>No repositories are currently being tracked.</p>
+                <p style="font-size: 0.9rem; color: var(--text-muted);">Add a repository above to start tracking its clone statistics.</p>
+            </div>
+        `;
+        return;
+    }
+
+    trackedReposList.innerHTML = repos.map(repo => `
+        <div class="tracked-repo-item">
+            <span class="repo-name">${repo}</span>
+            <button class="remove-btn" onclick="handleRemoveRepo('${repo}')">
+                <i class="fas fa-trash"></i>
+                Remove
+            </button>
+        </div>
+    `).join('');
+}
+
+async function loadTrackedRepos() {
+    trackedReposList.innerHTML = `
+        <div class="loading-repos">
+            <i class="fas fa-spinner fa-spin"></i>
+            Loading tracked repositories...
+        </div>
+    `;
+    
+    const repos = await fetchTrackedRepos();
+    renderTrackedRepos(repos);
+}
+
+async function handleAddRepo() {
+    const repoName = newRepoInput.value.trim();
+    if (!repoName) {
+        showToast('Please enter a repository name', 'error');
+        return;
+    }
+
+    // Validate repository name format
+    if (!/^[a-zA-Z0-9\-_\.]+$/.test(repoName)) {
+        showToast('Repository name can only contain letters, numbers, hyphens, underscores, and dots', 'error');
+        return;
+    }
+
+    const button = addRepoBtn;
+    const originalText = button.innerHTML;
+    
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding...';
+
+    const success = await addTrackedRepo(repoName);
+    
+    if (success) {
+        newRepoInput.value = '';
+        await loadTrackedRepos();
+    }
+
+    button.disabled = false;
+    button.innerHTML = originalText;
+}
+
+async function handleRemoveRepo(repoName) {
+    if (!confirm(`Are you sure you want to stop tracking "${repoName}"? This will not delete existing data.`)) {
+        return;
+    }
+
+    const success = await removeTrackedRepo(repoName);
+    if (success) {
+        await loadTrackedRepos();
+    }
+}
+
+function showModal() {
+    repoModal.classList.add('show');
+    loadTrackedRepos();
+    document.body.style.overflow = 'hidden';
+}
+
+function hideModal() {
+    repoModal.classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+// Export/Import Functions
+async function exportDatabase() {
+    const button = exportBtn;
+    const originalText = button.innerHTML;
+    
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
+
+    try {
+        const response = await fetch('/export');
+        if (!response.ok) {
+            throw new Error('Export failed');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        
+        // Get filename from response headers or use default
+        const contentDisposition = response.headers.get('Content-Disposition');
+        const filename = contentDisposition 
+            ? contentDisposition.split('filename=')[1].replace(/"/g, '')
+            : `github_stats_backup_${new Date().toISOString().split('T')[0]}.json`;
+        
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        showToast('Database exported successfully!', 'success');
+    } catch (error) {
+        console.error('Export error:', error);
+        showToast('Failed to export database', 'error');
+    } finally {
+        button.disabled = false;
+        button.innerHTML = originalText;
+    }
+}
+
+async function importDatabase(file, replaceExisting) {
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('replace_existing', replaceExisting.toString());
+
+        const response = await fetch('/import', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+        
+        if (response.ok) {
+            showToast('Database imported successfully!', 'success');
+            // Refresh the UI
+            await fetchStats();
+            await loadTrackedRepos();
+        } else {
+            throw new Error(result.message || 'Import failed');
+        }
+    } catch (error) {
+        console.error('Import error:', error);
+        showToast(`Failed to import database: ${error.message}`, 'error');
+    }
+}
+
+function handleImportClick() {
+    importFile.click();
+}
+
+async function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.json')) {
+        showToast('Please select a JSON file', 'error');
+        return;
+    }
+
+    const shouldReplace = replaceExisting.checked;
+    
+    if (shouldReplace) {
+        const confirmed = confirm(
+            'Warning: This will replace ALL existing data in the database. ' +
+            'This action cannot be undone. Are you sure you want to continue?'
+        );
+        if (!confirmed) {
+            importFile.value = '';
+            return;
+        }
+    }
+
+    const button = importBtn;
+    const originalText = button.innerHTML;
+    
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing...';
+
+    try {
+        await importDatabase(file, shouldReplace);
+    } finally {
+        button.disabled = false;
+        button.innerHTML = originalText;
+        importFile.value = '';
+    }
+}
+
 // Event Listeners
 searchInput.addEventListener('input', filterRepos);
 sortSelect.addEventListener('change', sortRepos);
 syncButton.addEventListener('click', runSync);
+manageReposButton.addEventListener('click', showModal);
+modalClose.addEventListener('click', hideModal);
+addRepoBtn.addEventListener('click', handleAddRepo);
+exportBtn.addEventListener('click', exportDatabase);
+importBtn.addEventListener('click', handleImportClick);
+importFile.addEventListener('change', handleFileSelect);
+
+// Chart view event listeners
+cardViewBtn.addEventListener('click', () => switchView('cards'));
+chartViewBtn.addEventListener('click', () => switchView('charts'));
+timeFilter.addEventListener('change', fetchAndRenderCharts);
+repoFilter.addEventListener('change', fetchAndRenderCharts);
+refreshChartBtn.addEventListener('click', fetchAndRenderCharts);
+
+// Close modal when clicking outside
+repoModal.addEventListener('click', (e) => {
+    if (e.target === repoModal) {
+        hideModal();
+    }
+});
+
+// Handle Enter key in repo input
+newRepoInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        handleAddRepo();
+    }
+});
+
+// Close modal with Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && repoModal.classList.contains('show')) {
+        hideModal();
+    }
+});
 
 // Initialize
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     initTheme();
+    await loadTemplate();
     fetchStats();
 });
 

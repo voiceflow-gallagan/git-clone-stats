@@ -17,21 +17,21 @@ def create_parser() -> argparse.ArgumentParser:
         prog="git-clone-stats",
         description="GitHub repository clone statistics tracker"
     )
-    
+
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
-    
+
     # Sync command
     sync_parser = subparsers.add_parser("sync", help="Synchronize clone statistics from GitHub")
-    
-    # Server command  
+
+    # Server command
     server_parser = subparsers.add_parser("server", help="Start the web dashboard server")
     server_parser.add_argument(
-        "--port", 
-        type=int, 
-        default=8124, 
-        help="Port to run the server on (default: 8124)"
+        "--port",
+        type=int,
+        default=8000,
+        help="Port to run the server on (default: 8000)"
     )
-    
+
     return parser
 
 
@@ -39,7 +39,7 @@ def main(argv: Optional[list] = None) -> int:
     """Main CLI entry point."""
     parser = create_parser()
     args = parser.parse_args(argv)
-    
+
     if args.command == "sync":
         app_main()
         return 0
