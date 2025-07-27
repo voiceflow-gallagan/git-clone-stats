@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Clone Analytics</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="theme-toggle">
+        <button id="theme-toggle" aria-label="Toggle theme">
+            <i class="fas fa-moon"></i>
+        </button>
+    </div>
+
+    <header class="hero">
+        <div class="hero-content">
+            <h1 class="hero-title">
+                <i class="fab fa-github"></i>
+                GitHub Clone Analytics
+            </h1>
+            <p class="hero-subtitle">Beautiful insights into your repository traffic</p>
+        </div>
+        <div class="hero-stats">
+            <div class="stat-card">
+                <div class="stat-value" id="total-repos">-</div>
+                <div class="stat-label">Repositories</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="total-clones">-</div>
+                <div class="stat-label">Total Clones</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="total-uniques">-</div>
+                <div class="stat-label">Unique Cloners</div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="controls">
+            <div class="search-container">
+                <i class="fas fa-search"></i>
+                <input type="text" id="search-input" placeholder="Search repositories..." />
+            </div>
+            <div class="sort-container">
+                <select id="sort-select">
+                    <option value="name">Sort by Name</option>
+                    <option value="clones-desc">Most Clones</option>
+                    <option value="clones-asc">Least Clones</option>
+                    <option value="uniques-desc">Most Uniques</option>
+                    <option value="uniques-asc">Least Uniques</option>
+                </select>
+            </div>
+            <button id="sync-button" class="sync-btn">
+                <i class="fas fa-sync-alt"></i>
+                <span>Sync Data</span>
+            </button>
+        </div>
+
+        <div id="loading" class="loading-container">
+            <div class="loading-spinner"></div>
+            <p>Loading repository data...</p>
+        </div>
+
+        <div id="repos-container" class="repos-grid"></div>
+    </main>
+
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
