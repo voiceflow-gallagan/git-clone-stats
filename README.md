@@ -183,6 +183,10 @@ Interactive time-series visualization showing:
 - **Responsive design**: Charts adapt to screen size and respect dark/light themes
 - **Interactive tooltips**: Hover over data points for detailed daily statistics
 
+<div align="center">
+<img width="70%" height="70%" alt="image" src="https://github.com/user-attachments/assets/4d6248ee-292b-41a6-b79d-179c53c8baf7"  />
+</div>
+
 #### Additional Features
 - **Dark/Light theme toggle** in the top-right corner
 - **Search and sorting** functionality for repositories (card view)
