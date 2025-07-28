@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "git-stats"
-version = "1.0.1"
+version = "1.0.2"
 description = "GitHub repository clone statistics tracker with web dashboard"
 readme = "README.md"
 license = "MIT"
