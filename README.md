@@ -1,6 +1,6 @@
 <div align="center">
 
-# git-stats - GitHub Repository Clone Statistics Tracker <img src="https://github.com/user-attachments/assets/dd25bc31-87e2-43ea-88de-e3de2222d066" width="80" align="right" />
+# git-stats - GitHub Repo Clone Stats & Analytics <img src="https://github.com/user-attachments/assets/dd25bc31-87e2-43ea-88de-e3de2222d066" width="80" align="right" />
 
 [![PyPI](https://img.shields.io/pypi/v/git-clone-stats)](https://pypi.org/project/git-clone-stats/)
 [![Clones](https://git-stats-467219.uc.r.appspot.com/badge/git-clone-stats)](https://github.com/taylorwilsdon/git-clone-stats/graphs/traffic) [![Python versions](https://img.shields.io/pypi/pyversions/git-clone-stats)](https://pypi.org/project/git-clone-stats/)
