@@ -48,6 +48,47 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
         """Send a JSON error response."""
         self._send_json_response({"success": False, "message": message}, status)
 
+    def _generate_badge_svg(self, label: str, message: str, color: str) -> str:
+        """Generate an SVG badge similar to shields.io."""
+        # Calculate text widths (approximate)
+        label_width = len(label) * 7 + 10
+        message_width = len(message) * 7 + 10
+        total_width = label_width + message_width
+        
+        # Color mapping
+        color_map = {
+            "blue": "#007ec6",
+            "green": "#4c1",
+            "red": "#e05d44",
+            "yellow": "#dfb317",
+            "orange": "#fe7d37",
+            "lightgrey": "#9f9f9f"
+        }
+        fill_color = color_map.get(color, "#007ec6")
+        
+        svg = f'''<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{total_width}" height="20" role="img" aria-label="{label}: {message}">
+    <title>{label}: {message}</title>
+    <linearGradient id="s" x2="0" y2="100%">
+        <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+        <stop offset="1" stop-opacity=".1"/>
+    </linearGradient>
+    <clipPath id="r">
+        <rect width="{total_width}" height="20" rx="3" fill="#fff"/>
+    </clipPath>
+    <g clip-path="url(#r)">
+        <rect width="{label_width}" height="20" fill="#555"/>
+        <rect x="{label_width}" width="{message_width}" height="20" fill="{fill_color}"/>
+        <rect width="{total_width}" height="20" fill="url(#s)"/>
+    </g>
+    <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="110">
+        <text aria-hidden="true" x="{label_width//2 * 10}" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="{(label_width-10) * 10}">{label}</text>
+        <text x="{label_width//2 * 10}" y="140" transform="scale(.1)" fill="#fff" textLength="{(label_width-10) * 10}">{label}</text>
+        <text aria-hidden="true" x="{(label_width + message_width//2) * 10}" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="{(message_width-10) * 10}">{message}</text>
+        <text x="{(label_width + message_width//2) * 10}" y="140" transform="scale(.1)" fill="#fff" textLength="{(message_width-10) * 10}">{message}</text>
+    </g>
+</svg>'''
+        return svg
+
     def do_GET(self):
         """Handle GET requests."""
         if self.path == '/':
@@ -122,22 +163,27 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
             return None
 
     def send_badge(self, repo_name: str):
-        """Redirect to a shields.io badge for the repo."""
+        """Serve a dynamic SVG badge for the repo."""
         stats = self.get_stats_for_repo(repo_name)
         if stats is None:
             self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Failed to retrieve stats from the database.")
             return
 
         total_clones = stats.get('total_clones', 0)
-        message = f"{total_clones}"
+        message = f"{total_clones:,}"  # Add comma formatting for large numbers
         label = "clones"
         color = "blue"
 
-        badge_url = f"https://img.shields.io/badge/{label}-{message}-{color}"
+        # Generate SVG badge directly
+        svg_content = self._generate_badge_svg(label, message, color)
 
-        self.send_response(HTTPStatus.FOUND)
-        self.send_header('Location', badge_url)
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-type", "image/svg+xml")
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.end_headers()
+        self.wfile.write(svg_content.encode('utf-8'))
 
     def get_all_stats(self):
         """Retrieve all statistics from the database."""
