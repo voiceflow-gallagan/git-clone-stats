@@ -7,6 +7,8 @@
 [![License](https://img.shields.io/github/license/taylorwilsdon/git-clone-stats)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/taylorwilsdon/git-clone-stats)](https://github.com/taylorwilsdon/git-clone-stats/stargazers)
 
+</div> 
+
 Git Stats is the missing piece of GitHub analytics - even if you pay, they will only give you 14 days of history. Bizarre gap for a company built on data... 
 
 But I digress. Git Stats is an agressively simple Python application for tracking and storing GitHub repository clone statistics. It has an extremely minimal HTML & JS frontend that requires no building, compiling or transpiling. 
