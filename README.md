@@ -1,8 +1,17 @@
-# GitHub Repository Clone Statistics Tracker
+<div align="center">
 
-Git Stats is the missing piece of GitHub analytics - even if you pay, they will only give you 14 days of history. Bizarre gap for a company built on data... 
+# git-stats - GitHub Repository Clone Statistics Tracker <img src="https://github.com/user-attachments/assets/dd25bc31-87e2-43ea-88de-e3de2222d066" width="80" align="right" />
 
-But I digress. Git Stats is an agressively simple Python application for tracking and storing GitHub repository clone statistics. It has an extremely minimal HTML & JS frontend that requires no building, compiling or transpiling. 
+[![PyPI](https://img.shields.io/pypi/v/git-clone-stats)](https://pypi.org/project/git-clone-stats/)
+[![Clones](https://git-stats-467219.uc.r.appspot.com/badge/git-clone-stats)](https://github.com/taylorwilsdon/git-clone-stats/graphs/traffic) [![Python versions](https://img.shields.io/pypi/pyversions/git-clone-stats)](https://pypi.org/project/git-clone-stats/)
+[![License](https://img.shields.io/github/license/taylorwilsdon/git-clone-stats)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/taylorwilsdon/git-clone-stats)](https://github.com/taylorwilsdon/git-clone-stats/stargazers)
+
+</div> 
+
+git-stats is the missing piece of GitHub analytics - even if you pay, they will only give you 14 days of history. Bizarre gap for a company built on data... 
+
+But I digress. This repo is an agressively simple Python application for tracking and storing GitHub repository clone statistics. It has an extremely minimal HTML & JS frontend that requires no building, compiling or transpiling. 
 
 The tool fetches clone data from the GitHub API and maintains historical records in a SQLite database. It runs as an always on service and periodically fetches clone stats (total and unique) and displays them in an easy to use dashboard with shields.io badges available for use.
 
