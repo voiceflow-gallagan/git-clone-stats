@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "git-stats"
+name = "git-clone-stats"
 version = "1.0.2"
 description = "GitHub repository clone statistics tracker with web dashboard"
 readme = "README.md"
@@ -44,16 +44,16 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/taylorwilsdon/git-stats"
-Repository = "https://github.com/taylorwilsdon/git-stats"
-Issues = "https://github.com/taylorwilsdon/git-stats/issues"
-Documentation = "https://github.com/taylorwilsdon/git-stats#readme"
+Homepage = "https://github.com/taylorwilsdon/git-clone-stats"
+Repository = "https://github.com/taylorwilsdon/git-clone-stats"
+Issues = "https://github.com/taylorwilsdon/git-clone-stats/issues"
+Documentation = "https://github.com/taylorwilsdon/git-clone-stats#readme"
 
 [project.scripts]
-git-stats = "git_clone_stats.cli:main"
+git-clone-stats = "git_clone_stats.cli:main"
 
 [project.entry-points."uv.tools"]
-git-stats = "git_clone_stats.cli:main"
+git-clone-stats = "git_clone_stats.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["git_clone_stats"]
