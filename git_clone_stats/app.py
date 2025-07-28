@@ -127,6 +127,26 @@ class DatabaseManager:
             self.logger.error(f"Failed to insert clone records for {repo}: {e}")
             raise
 
+    def upsert_clone_records(self, repo: str, records: List['CloneRecord']):
+        """Insert or update clone records in the database."""
+        if not records:
+            return
+
+        upsert_data = [
+            (repo, record.timestamp, record.count, record.uniques) for record in records
+        ]
+
+        try:
+            with self.conn:
+                self.conn.executemany(
+                    "INSERT OR REPLACE INTO clone_history (repo, timestamp, count, uniques) VALUES (?, ?, ?, ?)",
+                    upsert_data
+                )
+            self.logger.info(f"Upserted {len(records)} records for {repo}.")
+        except sqlite3.Error as e:
+            self.logger.error(f"Failed to upsert clone records for {repo}: {e}")
+            raise
+
     def get_tracked_repos(self) -> List[str]:
         """Get all actively tracked repositories."""
         rows = self._execute_query(
@@ -349,11 +369,6 @@ class GitHubStatsTracker:
         """Update clone data for a single repository."""
         self.logger.info(f"Updating data for {repo}")
 
-        # Get existing timestamps from DB
-        self.logger.info("Reading existing data from database...")
-        existing_timestamps = self.db_manager.get_existing_timestamps(repo)
-        self.logger.info(f"Found {len(existing_timestamps)} existing records for {repo}")
-
         # Fetch new data from GitHub
         self.logger.info("Fetching data from GitHub...")
         try:
@@ -361,20 +376,19 @@ class GitHubStatsTracker:
             github_data = self._fetch_clone_data(repo)
             clone_entries = github_data.get("clones", [])
 
-            # Process new entries
-            new_records_to_add = []
+            # Process all entries (GitHub may retroactively update statistics)
+            records_to_upsert = []
             for entry in clone_entries:
-                timestamp = entry["timestamp"]
-                if timestamp not in existing_timestamps:
-                    new_record = CloneRecord.from_github_entry(entry)
-                    new_records_to_add.append(new_record)
-                    self.logger.debug(f"New record for {repo}: {new_record}")
+                new_record = CloneRecord.from_github_entry(entry)
+                records_to_upsert.append(new_record)
+                self.logger.debug(f"Processing record for {repo}: {new_record}")
 
-            # Insert new records into the database
-            if new_records_to_add:
-                self.db_manager.insert_clone_records(repo, new_records_to_add)
+            # Upsert all records into the database
+            if records_to_upsert:
+                self.db_manager.upsert_clone_records(repo, records_to_upsert)
+                self.logger.info(f"Updated {len(records_to_upsert)} records for {repo}")
             else:
-                self.logger.info(f"No new records to add for {repo}")
+                self.logger.info(f"No records to update for {repo}")
 
             # Fetch and update star count
             self.logger.info("Fetching repository metadata...")
