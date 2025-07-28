@@ -6,7 +6,6 @@
 [![Clones](https://git-stats-467219.uc.r.appspot.com/badge/git-clone-stats)](https://github.com/taylorwilsdon/git-clone-stats/graphs/traffic)
 [![Python versions](https://img.shields.io/pypi/pyversions/git-clone-stats)](https://pypi.org/project/git-clone-stats/)
 [![License](https://img.shields.io/github/license/taylorwilsdon/git-clone-stats)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/taylorwilsdon/git-clone-stats)](https://github.com/taylorwilsdon/git-clone-stats/stargazers)
 
 </div>
 
