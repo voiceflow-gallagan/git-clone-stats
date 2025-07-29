@@ -27,7 +27,7 @@ class CloneRecord:
         return f"{self.count} {self.timestamp} {self.uniques}"
 
     @classmethod
-    def from_github_entry(cls, entry: Dict) -> 'CloneRecord':
+    def from_github_entry(cls, entry: Dict[str, any]) -> 'CloneRecord':
         """Create a CloneRecord from GitHub API response entry."""
         return cls(entry["count"], entry["timestamp"], entry["uniques"])
 
@@ -43,7 +43,7 @@ class ViewRecord:
         return f"{self.count} {self.timestamp} {self.uniques}"
 
     @classmethod
-    def from_github_entry(cls, entry: Dict) -> 'ViewRecord':
+    def from_github_entry(cls, entry: Dict[str, any]) -> 'ViewRecord':
         """Create a ViewRecord from GitHub API response entry."""
         return cls(entry["count"], entry["timestamp"], entry["uniques"])
 
@@ -172,25 +172,6 @@ class DatabaseManager:
             self.logger.error(f"Failed to upsert clone records for {repo}: {e}")
             raise
 
-    def insert_view_records(self, repo: str, records: List['ViewRecord']):
-        """Insert new view records into the database."""
-        if not records:
-            return
-
-        insert_data = [
-            (repo, record.timestamp, record.count, record.uniques) for record in records
-        ]
-
-        try:
-            with self.conn:
-                self.conn.executemany(
-                    "INSERT OR IGNORE INTO view_history (repo, timestamp, count, uniques) VALUES (?, ?, ?, ?)",
-                    insert_data
-                )
-            self.logger.info(f"Inserted {len(records)} new view records for {repo}.")
-        except sqlite3.Error as e:
-            self.logger.error(f"Failed to insert view records for {repo}: {e}")
-            raise
 
     def upsert_view_records(self, repo: str, records: List['ViewRecord']):
         """Insert or update view records in the database."""
@@ -442,7 +423,7 @@ class GitHubStatsTracker:
         )
         self.logger = logging.getLogger(__name__)
 
-    def _fetch_clone_data(self, repo: str) -> Dict:
+    def _fetch_clone_data(self, repo: str) -> Dict[str, any]:
         """Fetch clone data from GitHub API."""
         url = f"https://api.github.com/repos/{self.github_username}/{repo}/traffic/clones"
 
@@ -455,7 +436,7 @@ class GitHubStatsTracker:
             self.logger.error(f"Error fetching clone data for {repo}: {e}")
             raise
 
-    def _fetch_view_data(self, repo: str) -> Dict:
+    def _fetch_view_data(self, repo: str) -> Dict[str, any]:
         """Fetch view data from GitHub API."""
         url = f"https://api.github.com/repos/{self.github_username}/{repo}/traffic/views"
 
@@ -468,7 +449,7 @@ class GitHubStatsTracker:
             self.logger.error(f"Error fetching view data for {repo}: {e}")
             raise
 
-    def _fetch_repo_metadata(self, repo: str) -> Dict:
+    def _fetch_repo_metadata(self, repo: str) -> Dict[str, any]:
         """Fetch repository metadata from GitHub API."""
         url = f"https://api.github.com/repos/{self.github_username}/{repo}"
 

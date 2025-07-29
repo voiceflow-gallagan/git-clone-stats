@@ -10,38 +10,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from google.cloud import firestore
-
-
-@dataclass
-class CloneRecord:
-    """Represents a single clone record with count, timestamp, and unique clones."""
-    count: int
-    timestamp: str
-    uniques: int
-
-    def __str__(self) -> str:
-        return f"{self.count} {self.timestamp} {self.uniques}"
-
-    @classmethod
-    def from_github_entry(cls, entry: Dict) -> 'CloneRecord':
-        """Create a CloneRecord from GitHub API response entry."""
-        return cls(entry["count"], entry["timestamp"], entry["uniques"])
-
-
-@dataclass
-class ViewRecord:
-    """Represents a single view record with count, timestamp, and unique views."""
-    count: int
-    timestamp: str
-    uniques: int
-
-    def __str__(self) -> str:
-        return f"{self.count} {self.timestamp} {self.uniques}"
-
-    @classmethod
-    def from_github_entry(cls, entry: Dict) -> 'ViewRecord':
-        """Create a ViewRecord from GitHub API response entry."""
-        return cls(entry["count"], entry["timestamp"], entry["uniques"])
+from .app import CloneRecord, ViewRecord
 
 
 class FirestoreDatabaseManager:

@@ -79,6 +79,30 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
         </svg>'''
         return svg
 
+    def send_favicon(self):
+        """Serve the SVG favicon."""
+        import os
+        from pathlib import Path
+        
+        # Look for favicon.svg in the project root
+        favicon_path = Path(__file__).parent.parent / "favicon.svg"
+        
+        try:
+            if favicon_path.exists():
+                with open(favicon_path, 'r', encoding='utf-8') as f:
+                    svg_content = f.read()
+                
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-type", "image/svg+xml")
+                self.send_header("Content-Length", str(len(svg_content.encode('utf-8'))))
+                self.end_headers()
+                self.wfile.write(svg_content.encode('utf-8'))
+            else:
+                self.send_error(HTTPStatus.NOT_FOUND, "Favicon not found")
+        except Exception as e:
+            logger.error(f"Error serving favicon: {e}")
+            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Error serving favicon")
+
     def do_GET(self):
         """Handle GET requests."""
         # Parse the URL and query parameters
@@ -109,8 +133,7 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
         elif path == "/" or path == "/index.html":
             super().do_GET()
         elif path == "/favicon.ico":
-            # Send 404 for favicon to avoid errors
-            self.send_error(HTTPStatus.NOT_FOUND, "Favicon not found")
+            self.send_favicon()
         elif path.startswith("/static/"):
             # Remove /static/ prefix for the static directory
             self.path = path[8:]  # Remove "/static/" prefix
