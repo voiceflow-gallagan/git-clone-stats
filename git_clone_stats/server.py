@@ -375,63 +375,70 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
                 cursor = conn.execute(view_query, params_view)
                 view_rows = cursor.fetchall()
 
-                # Organize data by repository
-                chart_data = {}
+                # Create dictionaries for O(1) lookup by (repo, date) key
+                data_by_repo_date = {}
+                all_repos = set()
+                all_dates_by_repo = {}
 
                 # Process clone data
                 for row in clone_rows:
                     repo = row['repo']
-                    if repo not in chart_data:
-                        chart_data[repo] = {
-                            'labels': [],
-                            'clones': [],
-                            'unique_clones': [],
-                            'views': [],
-                            'unique_views': []
-                        }
-
-                    # Format timestamp for display
+                    all_repos.add(repo)
                     timestamp = datetime.fromisoformat(row['timestamp'].replace('Z', '+00:00'))
                     formatted_date = timestamp.strftime('%Y-%m-%d')
+                    
+                    if repo not in all_dates_by_repo:
+                        all_dates_by_repo[repo] = set()
+                    all_dates_by_repo[repo].add(formatted_date)
+                    
+                    key = (repo, formatted_date)
+                    if key not in data_by_repo_date:
+                        data_by_repo_date[key] = {'clones': 0, 'unique_clones': 0, 'views': 0, 'unique_views': 0}
+                    data_by_repo_date[key]['clones'] = row['count']
+                    data_by_repo_date[key]['unique_clones'] = row['uniques']
 
-                    chart_data[repo]['labels'].append(formatted_date)
-                    chart_data[repo]['clones'].append(row['count'])
-                    chart_data[repo]['unique_clones'].append(row['uniques'])
-
-                # Process view data and merge with clone data
+                # Process view data
                 for row in view_rows:
                     repo = row['repo']
-                    if repo not in chart_data:
-                        chart_data[repo] = {
-                            'labels': [],
-                            'clones': [],
-                            'unique_clones': [],
-                            'views': [],
-                            'unique_views': []
-                        }
-
-                    # Format timestamp for display
+                    all_repos.add(repo)
                     timestamp = datetime.fromisoformat(row['timestamp'].replace('Z', '+00:00'))
                     formatted_date = timestamp.strftime('%Y-%m-%d')
+                    
+                    if repo not in all_dates_by_repo:
+                        all_dates_by_repo[repo] = set()
+                    all_dates_by_repo[repo].add(formatted_date)
+                    
+                    key = (repo, formatted_date)
+                    if key not in data_by_repo_date:
+                        data_by_repo_date[key] = {'clones': 0, 'unique_clones': 0, 'views': 0, 'unique_views': 0}
+                    data_by_repo_date[key]['views'] = row['count']
+                    data_by_repo_date[key]['unique_views'] = row['uniques']
 
-                    # Find matching date or add new entry
-                    try:
-                        date_index = chart_data[repo]['labels'].index(formatted_date)
-                        chart_data[repo]['views'][date_index] = row['count']
-                        chart_data[repo]['unique_views'][date_index] = row['uniques']
-                    except ValueError:
-                        # Date not found in clone data, add new entry
-                        chart_data[repo]['labels'].append(formatted_date)
-                        chart_data[repo]['clones'].append(0)
-                        chart_data[repo]['unique_clones'].append(0)
-                        chart_data[repo]['views'].append(row['count'])
-                        chart_data[repo]['unique_views'].append(row['uniques'])
-
-                # Fill in missing view data with zeros
-                for repo in chart_data:
-                    while len(chart_data[repo]['views']) < len(chart_data[repo]['labels']):
-                        chart_data[repo]['views'].append(0)
-                        chart_data[repo]['unique_views'].append(0)
+                # Build chart data efficiently
+                chart_data = {}
+                for repo in all_repos:
+                    if repo not in all_dates_by_repo:
+                        continue
+                    
+                    # Sort dates for consistent ordering
+                    sorted_dates = sorted(all_dates_by_repo[repo])
+                    
+                    chart_data[repo] = {
+                        'labels': sorted_dates,
+                        'clones': [],
+                        'unique_clones': [],
+                        'views': [],
+                        'unique_views': []
+                    }
+                    
+                    # Populate arrays using O(1) dictionary lookups
+                    for date in sorted_dates:
+                        key = (repo, date)
+                        data = data_by_repo_date.get(key, {'clones': 0, 'unique_clones': 0, 'views': 0, 'unique_views': 0})
+                        chart_data[repo]['clones'].append(data['clones'])
+                        chart_data[repo]['unique_clones'].append(data['unique_clones'])
+                        chart_data[repo]['views'].append(data['views'])
+                        chart_data[repo]['unique_views'].append(data['unique_views'])
 
             self._send_json_response({
                 "chart_data": chart_data,
