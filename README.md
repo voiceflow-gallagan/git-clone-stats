@@ -13,7 +13,7 @@ git-stats is the missing piece of GitHub analytics - even if you pay, they will 
 
 But I digress. This repo is an agressively simple Python application for tracking and storing GitHub repository clone statistics. It has an extremely minimal HTML & JS frontend that requires no building, compiling or transpiling. 
 
-The tool fetches clone data from the GitHub API and maintains historical records in a SQLite database. It runs as an always on service and periodically fetches clone stats (total and unique) and displays them in an easy to use dashboard with shields.io badges available for use.
+The tool fetches clone data and view/traffic statistics from the GitHub API and maintains historical records in a SQLite or Firestore database. It runs as an always on service and periodically fetches clone stats (total and unique) plus view data and displays them in an easy to use dashboard with shields.io badges available for use.
 
 
 <div align="center">
@@ -24,13 +24,13 @@ The tool fetches clone data from the GitHub API and maintains historical records
 
 ## Features
 
-- **Complete GitHub Analytics**: Fetches repository clone statistics (total clones and unique cloners) and star counts from the GitHub API
-- **Historical Data Storage**: Maintains unlimited historical records in a SQLite database with robust querying capabilities
+- **Complete GitHub Analytics**: Fetches repository clone statistics, view/traffic data (total views and unique viewers), and star counts from the GitHub API
+- **Historical Data Storage**: Maintains unlimited historical records in SQLite (local) or Firestore (cloud) databases with robust querying capabilities
 - **Smart Data Management**: Avoids duplicate entries by only recording new data points
 - **Web Dashboard**: Modern, responsive UI with automatic background synchronization and dark/light theme support
 - **Interactive Visualizations**: Time-series charts with customizable date ranges and repository filtering
 - **Shields.io Badge Integration**: Generates embeddable badges for README files and documentation
-- **Cloud-Ready Deployment**: One-command deployment to Google App Engine with auto-scaling
+- **Cloud-Ready Deployment**: One-command deployment to Google App Engine with auto-scaling and Firestore database support
 - **Repository Management**: Add/remove tracked repositories through the web interface
 - **Data Export/Import**: Backup and migration functionality for database portability
 - **Flexible Sync Intervals**: Configurable automatic synchronization (daily, weekly, biweekly)
@@ -119,24 +119,30 @@ Here are some example queries you can run from your terminal:
 sqlite3 github_stats.db
 ```
 
-**2. View all records for a specific repository:**
+**2. View all clone records for a specific repository:**
 ```sql
 SELECT * FROM clone_history WHERE repo = 'reclaimed';
 ```
 
-**3. Get the total clone count for a repository:**
+**3. View all view/traffic records for a specific repository:**
+```sql
+SELECT * FROM view_history WHERE repo = 'reclaimed';
+```
+
+**4. Get the total clone count for a repository:**
 ```sql
 SELECT SUM(count) FROM clone_history WHERE repo = 'reclaimed';
 ```
 
-**4. Get the total unique cloners for a repository:**
+**5. Get the total unique cloners for a repository:**
 ```sql
 SELECT SUM(uniques) FROM clone_history WHERE repo = 'reclaimed';
 ```
 
-**5. View all data, ordered by repository and date:**
+**6. View all data, ordered by repository and date:**
 ```sql
 SELECT * FROM clone_history ORDER BY repo, timestamp;
+SELECT * FROM view_history ORDER BY repo, timestamp;
 ```
 
 ## Web Server & User Interface
@@ -205,7 +211,7 @@ Interactive time-series visualization showing:
 
 ### API Endpoints
 
-- **`GET /stats`**
+- **`GET /api/stats`**
 
   Returns a JSON array of all clone statistics from the database.
 
@@ -227,7 +233,7 @@ Interactive time-series visualization showing:
   ]
   ```
 
-- **`GET /chart-data?days=<number>&repo=<repo-name>`**
+- **`GET /api/chart-data?days=<number>&repo=<repo-name>`**
 
   Returns time-series data formatted for chart visualization.
 
@@ -236,7 +242,7 @@ Interactive time-series visualization showing:
   - `repo` (optional): Filter by specific repository name
 
   **Example:**
-  `http://localhost:8000/chart-data?days=30&repo=my-repo`
+  `http://localhost:8000/api/chart-data?days=30&repo=my-repo`
 
   **Example Response:**
   ```json
@@ -253,13 +259,12 @@ Interactive time-series visualization showing:
   }
   ```
 
-- **`GET /badge/<repo-name>`**
+- **`GET /api/badge/<repo-name>`**
 
-  Returns a shields.io badge displaying the total clone count for the specified repository.
+  Returns a shields.io-style SVG badge displaying the total clone count for the specified repository.
 
   **Example:**
-  `http://localhost:8000/badge/reclaimed` will redirect to:
-  `https://img.shields.io/badge/clones-123-blue` (where 123 is the total clone count)
+  `http://localhost:8000/api/badge/reclaimed` returns an SVG badge showing the clone count
 
 ## Easy Deployment to App Engine
 
