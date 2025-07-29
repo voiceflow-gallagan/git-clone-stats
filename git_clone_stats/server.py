@@ -149,14 +149,28 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
         try:
             with sqlite3.connect(DB_PATH) as conn:
                 conn.row_factory = sqlite3.Row
+                
+                # Get clone stats
                 cursor = conn.execute(
-                    "SELECT SUM(count) as total_clones, SUM(uniques) as total_uniques "
+                    "SELECT SUM(count) as total_clones, SUM(uniques) as total_unique_clones "
                     "FROM clone_history WHERE repo = ?",
                     (repo_name,)
                 )
-                row = cursor.fetchone()
-                return dict(row) if row and row['total_clones'] is not None else {
-                    "total_clones": 0, "total_uniques": 0
+                clone_row = cursor.fetchone()
+                
+                # Get view stats
+                cursor = conn.execute(
+                    "SELECT SUM(count) as total_views, SUM(uniques) as total_unique_views "
+                    "FROM view_history WHERE repo = ?",
+                    (repo_name,)
+                )
+                view_row = cursor.fetchone()
+                
+                return {
+                    "total_clones": clone_row['total_clones'] if clone_row and clone_row['total_clones'] is not None else 0,
+                    "total_unique_clones": clone_row['total_unique_clones'] if clone_row and clone_row['total_unique_clones'] is not None else 0,
+                    "total_views": view_row['total_views'] if view_row and view_row['total_views'] is not None else 0,
+                    "total_unique_views": view_row['total_unique_views'] if view_row and view_row['total_unique_views'] is not None else 0
                 }
         except sqlite3.Error as e:
             logger.error(f"Database error for repo {repo_name}: {e}")
@@ -197,6 +211,12 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
                 )
                 clone_rows = cursor.fetchall()
 
+                # Get view history
+                cursor = conn.execute(
+                    "SELECT repo, timestamp, count, uniques FROM view_history ORDER BY repo, timestamp"
+                )
+                view_rows = cursor.fetchall()
+
                 # Get star counts
                 cursor = conn.execute("SELECT repo, star_count FROM repo_stars")
                 star_rows = cursor.fetchall()
@@ -204,12 +224,25 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
                     row['repo']: row['star_count'] for row in star_rows
                 }
 
-                # Combine the data
-                stats = []
+                # Combine clone and view data
+                stats = {
+                    "clone_history": [],
+                    "view_history": []
+                }
+
+                # Add clone data
                 for row in clone_rows:
                     stat = dict(row)
                     stat['star_count'] = star_counts.get(row['repo'], 0)
-                    stats.append(stat)
+                    stat['type'] = 'clone'
+                    stats["clone_history"].append(stat)
+
+                # Add view data
+                for row in view_rows:
+                    stat = dict(row)
+                    stat['star_count'] = star_counts.get(row['repo'], 0)
+                    stat['type'] = 'view'
+                    stats["view_history"].append(stat)
 
                 return stats
         except sqlite3.Error as e:
@@ -313,36 +346,48 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
             with sqlite3.connect(DB_PATH) as conn:
                 conn.row_factory = sqlite3.Row
 
-                # Build query
-                query = "SELECT repo, timestamp, count, uniques FROM clone_history"
-                params = []
-
+                # Build WHERE conditions for filtering
                 where_conditions = []
+                params_clone = []
+                params_view = []
+
                 if date_threshold_str:
                     where_conditions.append("timestamp >= ?")
-                    params.append(date_threshold_str)
+                    params_clone.append(date_threshold_str)
+                    params_view.append(date_threshold_str)
 
                 if repo_filter:
                     where_conditions.append("repo = ?")
-                    params.append(repo_filter)
+                    params_clone.append(repo_filter)
+                    params_view.append(repo_filter)
 
+                where_clause = ""
                 if where_conditions:
-                    query += " WHERE " + " AND ".join(where_conditions)
+                    where_clause = " WHERE " + " AND ".join(where_conditions)
 
-                query += " ORDER BY repo, timestamp"
+                # Get clone data
+                clone_query = "SELECT repo, timestamp, count, uniques FROM clone_history" + where_clause + " ORDER BY repo, timestamp"
+                cursor = conn.execute(clone_query, params_clone)
+                clone_rows = cursor.fetchall()
 
-                cursor = conn.execute(query, params)
-                rows = cursor.fetchall()
+                # Get view data
+                view_query = "SELECT repo, timestamp, count, uniques FROM view_history" + where_clause + " ORDER BY repo, timestamp"
+                cursor = conn.execute(view_query, params_view)
+                view_rows = cursor.fetchall()
 
                 # Organize data by repository
                 chart_data = {}
-                for row in rows:
+
+                # Process clone data
+                for row in clone_rows:
                     repo = row['repo']
                     if repo not in chart_data:
                         chart_data[repo] = {
                             'labels': [],
                             'clones': [],
-                            'uniques': []
+                            'unique_clones': [],
+                            'views': [],
+                            'unique_views': []
                         }
 
                     # Format timestamp for display
@@ -351,7 +396,42 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
 
                     chart_data[repo]['labels'].append(formatted_date)
                     chart_data[repo]['clones'].append(row['count'])
-                    chart_data[repo]['uniques'].append(row['uniques'])
+                    chart_data[repo]['unique_clones'].append(row['uniques'])
+
+                # Process view data and merge with clone data
+                for row in view_rows:
+                    repo = row['repo']
+                    if repo not in chart_data:
+                        chart_data[repo] = {
+                            'labels': [],
+                            'clones': [],
+                            'unique_clones': [],
+                            'views': [],
+                            'unique_views': []
+                        }
+
+                    # Format timestamp for display
+                    timestamp = datetime.fromisoformat(row['timestamp'].replace('Z', '+00:00'))
+                    formatted_date = timestamp.strftime('%Y-%m-%d')
+
+                    # Find matching date or add new entry
+                    try:
+                        date_index = chart_data[repo]['labels'].index(formatted_date)
+                        chart_data[repo]['views'][date_index] = row['count']
+                        chart_data[repo]['unique_views'][date_index] = row['uniques']
+                    except ValueError:
+                        # Date not found in clone data, add new entry
+                        chart_data[repo]['labels'].append(formatted_date)
+                        chart_data[repo]['clones'].append(0)
+                        chart_data[repo]['unique_clones'].append(0)
+                        chart_data[repo]['views'].append(row['count'])
+                        chart_data[repo]['unique_views'].append(row['uniques'])
+
+                # Fill in missing view data with zeros
+                for repo in chart_data:
+                    while len(chart_data[repo]['views']) < len(chart_data[repo]['labels']):
+                        chart_data[repo]['views'].append(0)
+                        chart_data[repo]['unique_views'].append(0)
 
             self._send_json_response({
                 "chart_data": chart_data,

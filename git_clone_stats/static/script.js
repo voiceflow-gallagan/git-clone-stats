@@ -107,8 +107,16 @@ async function loadTemplate() {
                     <div class="stat-label-small">Total Clones</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-number">{{repo.total_uniques}}</div>
+                    <div class="stat-number">{{repo.total_unique_clones}}</div>
                     <div class="stat-label-small">Unique Cloners</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">{{repo.total_views}}</div>
+                    <div class="stat-label-small">Total Views</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">{{repo.total_unique_views}}</div>
+                    <div class="stat-label-small">Unique Visitors</div>
                 </div>
             </div>
             <div class="repo-dates">
@@ -230,9 +238,29 @@ function createChart(container, data, repoName) {
                 },
                 {
                     label: 'Unique Clones',
-                    data: data.uniques,
+                    data: data.unique_clones,
                     borderColor: uniquesColor,
                     backgroundColor: uniquesColor + '20',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                },
+                {
+                    label: 'Total Views',
+                    data: data.views,
+                    borderColor: '#8b5cf6',
+                    backgroundColor: '#8b5cf6' + '20',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                },
+                {
+                    label: 'Unique Views',
+                    data: data.unique_views,
+                    borderColor: '#f59e0b',
+                    backgroundColor: '#f59e0b' + '20',
                     fill: false,
                     tension: 0.3,
                     pointRadius: 4,
@@ -466,35 +494,78 @@ async function fetchStats() {
 }
 
 function processStats(stats) {
-    // Aggregate stats by repo
-    const repos = stats.reduce((acc, record) => {
-        if (!acc[record.repo]) {
-            acc[record.repo] = {
-                name: record.repo,
-                total_clones: 0,
-                total_uniques: 0,
-                star_count: record.star_count || 0,
-                history: []
-            };
-        }
-        acc[record.repo].total_clones += record.count;
-        acc[record.repo].total_uniques += record.uniques;
-        acc[record.repo].history.push({
-            timestamp: record.timestamp,
-            clones: record.count,
-            uniques: record.uniques
+    // Process both clone and view histories
+    const repos = {};
+    
+    // Process clone history
+    if (stats.clone_history) {
+        stats.clone_history.forEach(record => {
+            if (!repos[record.repo]) {
+                repos[record.repo] = {
+                    name: record.repo,
+                    total_clones: 0,
+                    total_unique_clones: 0,
+                    total_views: 0,
+                    total_unique_views: 0,
+                    star_count: record.star_count || 0,
+                    clone_history: [],
+                    view_history: []
+                };
+            }
+            repos[record.repo].total_clones += record.count;
+            repos[record.repo].total_unique_clones += record.uniques;
+            repos[record.repo].clone_history.push({
+                timestamp: record.timestamp,
+                clones: record.count,
+                uniques: record.uniques
+            });
         });
-        return acc;
-    }, {});
+    }
+    
+    // Process view history
+    if (stats.view_history) {
+        stats.view_history.forEach(record => {
+            if (!repos[record.repo]) {
+                repos[record.repo] = {
+                    name: record.repo,
+                    total_clones: 0,
+                    total_unique_clones: 0,
+                    total_views: 0,
+                    total_unique_views: 0,
+                    star_count: record.star_count || 0,
+                    clone_history: [],
+                    view_history: []
+                };
+            }
+            repos[record.repo].total_views += record.count;
+            repos[record.repo].total_unique_views += record.uniques;
+            repos[record.repo].view_history.push({
+                timestamp: record.timestamp,
+                views: record.count,
+                uniques: record.uniques
+            });
+        });
+    }
 
     // Calculate date ranges for each repo
     Object.values(repos).forEach(repo => {
-        if (repo.history.length > 0) {
-            // Sort history by timestamp to ensure correct order
-            repo.history.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-            
-            repo.first_collected = repo.history[0].timestamp;
-            repo.last_sync = repo.history[repo.history.length - 1].timestamp;
+        // Combine all timestamps from both clone and view history to find date range
+        const allTimestamps = [];
+        
+        if (repo.clone_history.length > 0) {
+            repo.clone_history.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            allTimestamps.push(...repo.clone_history.map(h => h.timestamp));
+        }
+        
+        if (repo.view_history.length > 0) {
+            repo.view_history.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            allTimestamps.push(...repo.view_history.map(h => h.timestamp));
+        }
+        
+        if (allTimestamps.length > 0) {
+            allTimestamps.sort();
+            repo.first_collected = allTimestamps[0];
+            repo.last_sync = allTimestamps[allTimestamps.length - 1];
         }
     });
 
@@ -505,11 +576,15 @@ function processStats(stats) {
 function updateHeroStats() {
     const totalRepos = allRepos.length;
     const totalClones = allRepos.reduce((sum, repo) => sum + repo.total_clones, 0);
-    const totalUniques = allRepos.reduce((sum, repo) => sum + repo.total_uniques, 0);
+    const totalUniqueClones = allRepos.reduce((sum, repo) => sum + repo.total_unique_clones, 0);
+    const totalViews = allRepos.reduce((sum, repo) => sum + repo.total_views, 0);
+    const totalUniqueViews = allRepos.reduce((sum, repo) => sum + repo.total_unique_views, 0);
 
-    animateNumber(totalReposEl, totalRepos);
-    animateNumber(totalClonesEl, totalClones);
-    animateNumber(totalUniquesEl, totalUniques);
+    animateNumber(document.getElementById('total-repos'), totalRepos);
+    animateNumber(document.getElementById('total-clones'), totalClones);
+    animateNumber(document.getElementById('total-uniques'), totalUniqueClones);
+    animateNumber(document.getElementById('total-views'), totalViews);
+    animateNumber(document.getElementById('total-unique-views'), totalUniqueViews);
 }
 
 function animateNumber(element, target) {
@@ -570,7 +645,9 @@ function createRepoCard(repo, index) {
         repo: {
             name: repo.name,
             total_clones: repo.total_clones.toLocaleString(),
-            total_uniques: repo.total_uniques.toLocaleString(),
+            total_unique_clones: repo.total_unique_clones.toLocaleString(),
+            total_views: repo.total_views.toLocaleString(),
+            total_unique_views: repo.total_unique_views.toLocaleString(),
             star_count: repo.star_count.toLocaleString(),
             first_collected_formatted: repo.first_collected ? formatDate(repo.first_collected) : 'N/A',
             last_sync_formatted: repo.last_sync ? formatDate(repo.last_sync) : 'N/A'
@@ -608,9 +685,17 @@ function sortRepos() {
             case 'clones-asc':
                 return a.total_clones - b.total_clones;
             case 'uniques-desc':
-                return b.total_uniques - a.total_uniques;
+                return b.total_unique_clones - a.total_unique_clones;
             case 'uniques-asc':
-                return a.total_uniques - b.total_uniques;
+                return a.total_unique_clones - b.total_unique_clones;
+            case 'views-desc':
+                return b.total_views - a.total_views;
+            case 'views-asc':
+                return a.total_views - b.total_views;
+            case 'unique-views-desc':
+                return b.total_unique_views - a.total_unique_views;
+            case 'unique-views-asc':
+                return a.total_unique_views - b.total_unique_views;
             default:
                 return 0;
         }
