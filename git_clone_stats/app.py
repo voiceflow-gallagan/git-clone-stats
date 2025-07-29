@@ -9,27 +9,12 @@ This tool fetches clone data from the GitHub API and maintains historical record
 import logging
 import os
 import sqlite3
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 import requests
 
-
-@dataclass
-class CloneRecord:
-    """Represents a single clone record with count, timestamp, and unique clones."""
-    count: int
-    timestamp: str
-    uniques: int
-
-    def __str__(self) -> str:
-        return f"{self.count} {self.timestamp} {self.uniques}"
-
-    @classmethod
-    def from_github_entry(cls, entry: Dict) -> 'CloneRecord':
-        """Create a CloneRecord from GitHub API response entry."""
-        return cls(entry["count"], entry["timestamp"], entry["uniques"])
+from .models import CloneRecord, ViewRecord
 
 
 class DatabaseManager:
@@ -61,6 +46,15 @@ class DatabaseManager:
             with self.conn:
                 self.conn.execute("""
                     CREATE TABLE IF NOT EXISTS clone_history (
+                        repo TEXT NOT NULL,
+                        timestamp TEXT NOT NULL,
+                        count INTEGER NOT NULL,
+                        uniques INTEGER NOT NULL,
+                        PRIMARY KEY (repo, timestamp)
+                    )
+                """)
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS view_history (
                         repo TEXT NOT NULL,
                         timestamp TEXT NOT NULL,
                         count INTEGER NOT NULL,
@@ -147,6 +141,27 @@ class DatabaseManager:
             self.logger.error(f"Failed to upsert clone records for {repo}: {e}")
             raise
 
+
+    def upsert_view_records(self, repo: str, records: List['ViewRecord']):
+        """Insert or update view records in the database."""
+        if not records:
+            return
+
+        upsert_data = [
+            (repo, record.timestamp, record.count, record.uniques) for record in records
+        ]
+
+        try:
+            with self.conn:
+                self.conn.executemany(
+                    "INSERT OR REPLACE INTO view_history (repo, timestamp, count, uniques) VALUES (?, ?, ?, ?)",
+                    upsert_data
+                )
+            self.logger.info(f"Upserted {len(records)} view records for {repo}.")
+        except sqlite3.Error as e:
+            self.logger.error(f"Failed to upsert view records for {repo}: {e}")
+            raise
+
     def get_tracked_repos(self) -> List[str]:
         """Get all actively tracked repositories."""
         rows = self._execute_query(
@@ -182,6 +197,18 @@ class DatabaseManager:
             self.logger.error(f"Failed to remove tracked repo {repo_name}: {e}")
             return False
 
+    def update_tracked_repo(self, repo_name: str):
+        """Update the last sync time for a tracked repo."""
+        try:
+            with self.conn:
+                self.conn.execute(
+                    "UPDATE tracked_repos SET last_sync = ? WHERE repo_name = ?",
+                    (datetime.utcnow().isoformat() + 'Z', repo_name)
+                )
+            self.logger.debug(f"Updated last_sync for {repo_name}")
+        except sqlite3.Error as e:
+            self.logger.error(f"Failed to update last_sync for {repo_name}: {e}")
+
     def update_repo_stars(self, repo: str, star_count: int) -> bool:
         """Update star count for a repository."""
         try:
@@ -213,6 +240,7 @@ class DatabaseManager:
                     "export_timestamp": datetime.now().isoformat(),
                     "version": "1.0",
                     "clone_history": [],
+                    "view_history": [],
                     "tracked_repos": [],
                     "repo_stars": []
                 }
@@ -223,6 +251,18 @@ class DatabaseManager:
                 )
                 for row in cursor.fetchall():
                     export_data["clone_history"].append({
+                        "repo": row["repo"],
+                        "timestamp": row["timestamp"],
+                        "count": row["count"],
+                        "uniques": row["uniques"]
+                    })
+
+                # Export view history
+                cursor = self.conn.execute(
+                    "SELECT repo, timestamp, count, uniques FROM view_history ORDER BY repo, timestamp"
+                )
+                for row in cursor.fetchall():
+                    export_data["view_history"].append({
                         "repo": row["repo"],
                         "timestamp": row["timestamp"],
                         "count": row["count"],
@@ -249,6 +289,7 @@ class DatabaseManager:
 
                 self.logger.info(
                     f"Database exported successfully with {len(export_data['clone_history'])} clone records, "
+                    f"{len(export_data['view_history'])} view records, "
                     f"{len(export_data['tracked_repos'])} tracked repos, "
                     f"and {len(export_data['repo_stars'])} star records"
                 )
@@ -265,6 +306,7 @@ class DatabaseManager:
                 self.logger.info("Clearing existing data before import...")
                 with self.conn:
                     self.conn.execute("DELETE FROM clone_history")
+                    self.conn.execute("DELETE FROM view_history")
                     self.conn.execute("DELETE FROM tracked_repos")
                     self.conn.execute("DELETE FROM repo_stars")
 
@@ -278,6 +320,17 @@ class DatabaseManager:
                          for record in clone_records]
                     )
                 self.logger.info(f"Imported {len(clone_records)} clone history records")
+
+            # Import view history
+            view_records = import_data.get("view_history", [])
+            if view_records:
+                with self.conn:
+                    self.conn.executemany(
+                        "INSERT OR IGNORE INTO view_history (repo, timestamp, count, uniques) VALUES (?, ?, ?, ?)",
+                        [(record["repo"], record["timestamp"], record["count"], record["uniques"])
+                         for record in view_records]
+                    )
+                self.logger.info(f"Imported {len(view_records)} view history records")
 
             # Import tracked repos
             tracked_repos = import_data.get("tracked_repos", [])
@@ -339,7 +392,7 @@ class GitHubStatsTracker:
         )
         self.logger = logging.getLogger(__name__)
 
-    def _fetch_clone_data(self, repo: str) -> Dict:
+    def _fetch_clone_data(self, repo: str) -> Dict[str, any]:
         """Fetch clone data from GitHub API."""
         url = f"https://api.github.com/repos/{self.github_username}/{repo}/traffic/clones"
 
@@ -349,10 +402,23 @@ class GitHubStatsTracker:
             return response.json()
 
         except requests.RequestException as e:
-            self.logger.error(f"Error fetching data for {repo}: {e}")
+            self.logger.error(f"Error fetching clone data for {repo}: {e}")
             raise
 
-    def _fetch_repo_metadata(self, repo: str) -> Dict:
+    def _fetch_view_data(self, repo: str) -> Dict[str, any]:
+        """Fetch view data from GitHub API."""
+        url = f"https://api.github.com/repos/{self.github_username}/{repo}/traffic/views"
+
+        try:
+            response = self.session.get(url, timeout=30)
+            response.raise_for_status()
+            return response.json()
+
+        except requests.RequestException as e:
+            self.logger.error(f"Error fetching view data for {repo}: {e}")
+            raise
+
+    def _fetch_repo_metadata(self, repo: str) -> Dict[str, any]:
         """Fetch repository metadata from GitHub API."""
         url = f"https://api.github.com/repos/{self.github_username}/{repo}"
 
@@ -366,35 +432,56 @@ class GitHubStatsTracker:
             raise
 
     def _update_repository(self, repo: str) -> None:
-        """Update clone data for a single repository."""
+        """Update clone and view data for a single repository."""
         self.logger.info(f"Updating data for {repo}")
 
         # Fetch new data from GitHub
         self.logger.info("Fetching data from GitHub...")
         try:
             # Fetch clone data
-            github_data = self._fetch_clone_data(repo)
-            clone_entries = github_data.get("clones", [])
+            clone_data = self._fetch_clone_data(repo)
+            clone_entries = clone_data.get("clones", [])
 
-            # Process all entries (GitHub may retroactively update statistics)
-            records_to_upsert = []
+            # Process all clone entries (GitHub may retroactively update statistics)
+            clone_records_to_upsert = []
             for entry in clone_entries:
                 new_record = CloneRecord.from_github_entry(entry)
-                records_to_upsert.append(new_record)
-                self.logger.debug(f"Processing record for {repo}: {new_record}")
+                clone_records_to_upsert.append(new_record)
+                self.logger.debug(f"Processing clone record for {repo}: {new_record}")
 
-            # Upsert all records into the database
-            if records_to_upsert:
-                self.db_manager.upsert_clone_records(repo, records_to_upsert)
-                self.logger.info(f"Updated {len(records_to_upsert)} records for {repo}")
+            # Upsert all clone records into the database
+            if clone_records_to_upsert:
+                self.db_manager.upsert_clone_records(repo, clone_records_to_upsert)
+                self.logger.info(f"Updated {len(clone_records_to_upsert)} clone records for {repo}")
             else:
-                self.logger.info(f"No records to update for {repo}")
+                self.logger.info(f"No clone records to update for {repo}")
+
+            # Fetch view data
+            view_data = self._fetch_view_data(repo)
+            view_entries = view_data.get("views", [])
+
+            # Process all view entries
+            view_records_to_upsert = []
+            for entry in view_entries:
+                new_record = ViewRecord.from_github_entry(entry)
+                view_records_to_upsert.append(new_record)
+                self.logger.debug(f"Processing view record for {repo}: {new_record}")
+
+            # Upsert all view records into the database
+            if view_records_to_upsert:
+                self.db_manager.upsert_view_records(repo, view_records_to_upsert)
+                self.logger.info(f"Updated {len(view_records_to_upsert)} view records for {repo}")
+            else:
+                self.logger.info(f"No view records to update for {repo}")
 
             # Fetch and update star count
             self.logger.info("Fetching repository metadata...")
             metadata = self._fetch_repo_metadata(repo)
             star_count = metadata.get("stargazers_count", 0)
             self.db_manager.update_repo_stars(repo, star_count)
+
+            # Update the last_sync timestamp for this repo
+            self.db_manager.update_tracked_repo(repo)
 
             self.logger.info(f"Update for {repo} completed successfully")
 
@@ -451,8 +538,12 @@ def run_sync():
         # Load configuration
         github_token, github_username, repos, db_path = load_configuration()
 
+        # Get appropriate database manager
+        from .db_factory import get_database_manager
+        db_manager = get_database_manager()
+        
         # Setup and run tracker
-        with DatabaseManager(db_path) as db_manager:
+        with db_manager:
             db_manager.setup_database()
             # No default repos to migrate since repos list is empty
             tracker = GitHubStatsTracker(github_token, github_username, repos, db_manager)

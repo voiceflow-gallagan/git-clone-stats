@@ -107,8 +107,16 @@ async function loadTemplate() {
                     <div class="stat-label-small">Total Clones</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-number">{{repo.total_uniques}}</div>
+                    <div class="stat-number">{{repo.total_unique_clones}}</div>
                     <div class="stat-label-small">Unique Cloners</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">{{repo.total_views}}</div>
+                    <div class="stat-label-small">Total Views</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">{{repo.total_unique_views}}</div>
+                    <div class="stat-label-small">Unique Visitors</div>
                 </div>
             </div>
             <div class="repo-dates">
@@ -230,9 +238,29 @@ function createChart(container, data, repoName) {
                 },
                 {
                     label: 'Unique Clones',
-                    data: data.uniques,
+                    data: data.unique_clones,
                     borderColor: uniquesColor,
                     backgroundColor: uniquesColor + '20',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                },
+                {
+                    label: 'Total Views',
+                    data: data.views,
+                    borderColor: '#8b5cf6',
+                    backgroundColor: '#8b5cf6' + '20',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                },
+                {
+                    label: 'Unique Views',
+                    data: data.unique_views,
+                    borderColor: '#f59e0b',
+                    backgroundColor: '#f59e0b' + '20',
                     fill: false,
                     tension: 0.3,
                     pointRadius: 4,
@@ -452,7 +480,7 @@ const api = {
 async function fetchStats() {
     try {
         showLoading(true);
-        const data = await api.get('/stats');
+        const data = await api.get('/api/stats');
         githubUsername = data.github_username || '';
         processStats(data.stats);
         updateHeroStats();
@@ -466,36 +494,104 @@ async function fetchStats() {
 }
 
 function processStats(stats) {
-    // Aggregate stats by repo
-    const repos = stats.reduce((acc, record) => {
-        if (!acc[record.repo]) {
-            acc[record.repo] = {
-                name: record.repo,
-                total_clones: 0,
-                total_uniques: 0,
-                star_count: record.star_count || 0,
-                history: []
+    // Process repo summary data from new API format
+    const repos = {};
+    
+    // Process each repo's summary data - we need the total cumulative stats, not just 14 days
+    if (Array.isArray(stats)) {
+        stats.forEach(repo => {
+            repos[repo.repo] = {
+                name: repo.repo,
+                total_clones: repo.total_clones || 0,  // TOTAL cumulative clones
+                total_unique_clones: repo.total_unique_clones || 0,  // TOTAL cumulative unique clones
+                total_views: repo.total_views || 0,  // TOTAL cumulative views
+                total_unique_views: repo.total_unique_views || 0,  // TOTAL cumulative unique views
+                last_14_days_clones: repo.last_14_days_clones || 0,
+                last_14_days_unique_clones: repo.last_14_days_unique_clones || 0,
+                last_14_days_views: repo.last_14_days_views || 0,
+                last_14_days_unique_views: repo.last_14_days_unique_views || 0,
+                star_count: repo.star_count || 0,
+                last_updated: repo.last_updated,
+                first_collected: repo.first_collected,
+                clone_history: [],
+                view_history: []
             };
-        }
-        acc[record.repo].total_clones += record.count;
-        acc[record.repo].total_uniques += record.uniques;
-        acc[record.repo].history.push({
-            timestamp: record.timestamp,
-            clones: record.count,
-            uniques: record.uniques
         });
-        return acc;
-    }, {});
+    }
+    
+    // Legacy support for old clone_history format
+    if (stats.clone_history) {
+        stats.clone_history.forEach(record => {
+            if (!repos[record.repo]) {
+                repos[record.repo] = {
+                    name: record.repo,
+                    total_clones: 0,
+                    total_unique_clones: 0,
+                    total_views: 0,
+                    total_unique_views: 0,
+                    star_count: record.star_count || 0,
+                    clone_history: [],
+                    view_history: []
+                };
+            }
+            repos[record.repo].total_clones += record.count;
+            repos[record.repo].total_unique_clones += record.uniques;
+            repos[record.repo].clone_history.push({
+                timestamp: record.timestamp,
+                clones: record.count,
+                uniques: record.uniques
+            });
+        });
+    }
+    
+    // Process view history
+    if (stats.view_history) {
+        stats.view_history.forEach(record => {
+            if (!repos[record.repo]) {
+                repos[record.repo] = {
+                    name: record.repo,
+                    total_clones: 0,
+                    total_unique_clones: 0,
+                    total_views: 0,
+                    total_unique_views: 0,
+                    star_count: record.star_count || 0,
+                    clone_history: [],
+                    view_history: []
+                };
+            }
+            repos[record.repo].total_views += record.count;
+            repos[record.repo].total_unique_views += record.uniques;
+            repos[record.repo].view_history.push({
+                timestamp: record.timestamp,
+                views: record.count,
+                uniques: record.uniques
+            });
+        });
+    }
 
     // Calculate date ranges for each repo
     Object.values(repos).forEach(repo => {
-        if (repo.history.length > 0) {
-            // Sort history by timestamp to ensure correct order
-            repo.history.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-            
-            repo.first_collected = repo.history[0].timestamp;
-            repo.last_sync = repo.history[repo.history.length - 1].timestamp;
+        // Combine all timestamps from both clone and view history to find date range
+        const allTimestamps = [];
+        
+        if (repo.clone_history.length > 0) {
+            repo.clone_history.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            allTimestamps.push(...repo.clone_history.map(h => h.timestamp));
         }
+        
+        if (repo.view_history.length > 0) {
+            repo.view_history.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            allTimestamps.push(...repo.view_history.map(h => h.timestamp));
+        }
+        
+        // Use the timestamps from the API data (already calculated by server)
+        if (!repo.first_collected && allTimestamps.length > 0) {
+            allTimestamps.sort();
+            repo.first_collected = allTimestamps[0];
+        }
+        
+        // Use last_updated as last_sync
+        repo.last_sync = repo.last_updated;
     });
 
     allRepos = Object.values(repos);
@@ -505,11 +601,15 @@ function processStats(stats) {
 function updateHeroStats() {
     const totalRepos = allRepos.length;
     const totalClones = allRepos.reduce((sum, repo) => sum + repo.total_clones, 0);
-    const totalUniques = allRepos.reduce((sum, repo) => sum + repo.total_uniques, 0);
+    const totalUniqueClones = allRepos.reduce((sum, repo) => sum + repo.total_unique_clones, 0);
+    const totalViews = allRepos.reduce((sum, repo) => sum + repo.total_views, 0);
+    const totalUniqueViews = allRepos.reduce((sum, repo) => sum + repo.total_unique_views, 0);
 
-    animateNumber(totalReposEl, totalRepos);
-    animateNumber(totalClonesEl, totalClones);
-    animateNumber(totalUniquesEl, totalUniques);
+    animateNumber(document.getElementById('total-repos'), totalRepos);
+    animateNumber(document.getElementById('total-clones'), totalClones);
+    animateNumber(document.getElementById('total-uniques'), totalUniqueClones);
+    animateNumber(document.getElementById('total-views'), totalViews);
+    animateNumber(document.getElementById('total-unique-views'), totalUniqueViews);
 }
 
 function animateNumber(element, target) {
@@ -562,7 +662,7 @@ function createRepoCard(repo, index) {
     card.className = 'repo-card';
     card.style.animationDelay = `${index * 0.1}s`;
 
-    const badgeUrl = `/badge/${repo.name}`;
+    const badgeUrl = `/badge/${repo.name}/total.svg`;
     const markdownCode = `[![Clones](${window.location.origin}${badgeUrl})](https://github.com/${githubUsername}/${repo.name}/graphs/traffic)`;
 
     // Prepare template data
@@ -570,7 +670,9 @@ function createRepoCard(repo, index) {
         repo: {
             name: repo.name,
             total_clones: repo.total_clones.toLocaleString(),
-            total_uniques: repo.total_uniques.toLocaleString(),
+            total_unique_clones: repo.total_unique_clones.toLocaleString(),
+            total_views: repo.total_views.toLocaleString(),
+            total_unique_views: repo.total_unique_views.toLocaleString(),
             star_count: repo.star_count.toLocaleString(),
             first_collected_formatted: repo.first_collected ? formatDate(repo.first_collected) : 'N/A',
             last_sync_formatted: repo.last_sync ? formatDate(repo.last_sync) : 'N/A'
@@ -608,9 +710,17 @@ function sortRepos() {
             case 'clones-asc':
                 return a.total_clones - b.total_clones;
             case 'uniques-desc':
-                return b.total_uniques - a.total_uniques;
+                return b.total_unique_clones - a.total_unique_clones;
             case 'uniques-asc':
-                return a.total_uniques - b.total_uniques;
+                return a.total_unique_clones - b.total_unique_clones;
+            case 'views-desc':
+                return b.total_views - a.total_views;
+            case 'views-asc':
+                return a.total_views - b.total_views;
+            case 'unique-views-desc':
+                return b.total_unique_views - a.total_unique_views;
+            case 'unique-views-asc':
+                return a.total_unique_views - b.total_unique_views;
             default:
                 return 0;
         }
@@ -660,7 +770,7 @@ async function withButtonLoading(button, loadingText, action) {
 async function runSync() {
     await withButtonLoading(syncButton, 'Syncing...', async () => {
         try {
-            const result = await api.post('/sync');
+            const result = await api.get('/api/sync');
             showToast('Sync completed successfully!', 'success');
             await fetchStats();
         } catch (error) {
@@ -679,8 +789,8 @@ function showLoading(show) {
 // Repository Management Functions
 async function fetchTrackedRepos() {
     try {
-        const data = await api.get('/tracked-repos');
-        return data.tracked_repos;
+        const data = await api.get('/api/tracked-repos');
+        return data.repositories;
     } catch (error) {
         console.error('Error fetching tracked repos:', error);
         showToast('Failed to load tracked repositories', 'error');
@@ -690,7 +800,7 @@ async function fetchTrackedRepos() {
 
 async function addTrackedRepo(repoName) {
     try {
-        const result = await api.post('/tracked-repos', { repo_name: repoName });
+        const result = await api.post('/api/tracked-repos/add', { repo_name: repoName });
         showToast(result.message, 'success');
         return true;
     } catch (error) {
@@ -702,7 +812,7 @@ async function addTrackedRepo(repoName) {
 
 async function removeTrackedRepo(repoName) {
     try {
-        const result = await api.delete(`/tracked-repos/${repoName}`);
+        const result = await api.post('/api/tracked-repos/remove', { repo_name: repoName });
         showToast(result.message, 'success');
         return true;
     } catch (error) {
@@ -713,7 +823,7 @@ async function removeTrackedRepo(repoName) {
 }
 
 function renderTrackedRepos(repos) {
-    if (repos.length === 0) {
+    if (!repos || repos.length === 0) {
         trackedReposList.innerHTML = `
             <div class="empty-repos">
                 <i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 1rem; color: var(--text-muted);"></i>

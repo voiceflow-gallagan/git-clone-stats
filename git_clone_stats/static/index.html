@@ -66,6 +66,31 @@
                     <div class="stat-label">Unique Cloners</div>
                 </div>
             </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-value" id="total-views">-</div>
+                    <div class="stat-label">Total Views</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-value" id="total-unique-views">-</div>
+                    <div class="stat-label">Unique Visitors</div>
+                </div>
+            </div>
         </div>
     </header>
 
@@ -90,8 +115,12 @@
                     <option value="name">Sort by Name</option>
                     <option value="clones-desc">Most Clones</option>
                     <option value="clones-asc">Least Clones</option>
-                    <option value="uniques-desc">Most Uniques</option>
-                    <option value="uniques-asc">Least Uniques</option>
+                    <option value="uniques-desc">Most Unique Clones</option>
+                    <option value="uniques-asc">Least Unique Clones</option>
+                    <option value="views-desc">Most Views</option>
+                    <option value="views-asc">Least Views</option>
+                    <option value="unique-views-desc">Most Unique Views</option>
+                    <option value="unique-views-asc">Least Unique Views</option>
                 </select>
             </div>
             <button id="sync-button" class="btn btn-primary sync-btn">

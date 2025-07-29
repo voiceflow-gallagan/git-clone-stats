@@ -10,10 +10,12 @@ __author__ = "Taylor Wilsdon"
 __email__ = "taylor@example.com"
 
 from .app import GitHubStatsTracker, DatabaseManager, CloneRecord, run_sync
+from .db_factory import get_database_manager
 
 __all__ = [
     "GitHubStatsTracker",
     "DatabaseManager",
     "CloneRecord",
     "run_sync",
+    "get_database_manager",
 ]
