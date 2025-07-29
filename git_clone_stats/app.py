@@ -573,8 +573,12 @@ def run_sync():
         # Load configuration
         github_token, github_username, repos, db_path = load_configuration()
 
+        # Get appropriate database manager
+        from .db_factory import get_database_manager
+        db_manager = get_database_manager()
+        
         # Setup and run tracker
-        with DatabaseManager(db_path) as db_manager:
+        with db_manager:
             db_manager.setup_database()
             # No default repos to migrate since repos list is empty
             tracker = GitHubStatsTracker(github_token, github_username, repos, db_manager)

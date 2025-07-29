@@ -18,6 +18,8 @@ from http import HTTPStatus
 from pathlib import Path
 
 from .app import run_sync, DatabaseManager
+from .db_factory import get_database_manager
+from .server_db_adapter import get_database_adapter
 
 # Configure logging
 logging.basicConfig(
@@ -26,7 +28,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DB_PATH = "github_stats.db"
+# DB_PATH is now managed by db_factory
 
 
 class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -49,91 +51,85 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
         self._send_json_response({"success": False, "message": message}, status)
 
     def _generate_badge_svg(self, label: str, message: str, color: str) -> str:
-        """Generate an SVG badge similar to shields.io."""
-        # Calculate text widths (approximate)
+        """Generate an SVG badge with the given parameters."""
+        # Simple badge template with fixed dimensions
         label_width = len(label) * 7 + 10
         message_width = len(message) * 7 + 10
         total_width = label_width + message_width
         
-        # Color mapping
-        color_map = {
-            "blue": "#007ec6",
-            "green": "#4c1",
-            "red": "#e05d44",
-            "yellow": "#dfb317",
-            "orange": "#fe7d37",
-            "lightgrey": "#9f9f9f"
-        }
-        fill_color = color_map.get(color, "#007ec6")
-        
-        svg = f'''<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{total_width}" height="20" role="img" aria-label="{label}: {message}">
-    <title>{label}: {message}</title>
-    <linearGradient id="s" x2="0" y2="100%">
-        <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
-        <stop offset="1" stop-opacity=".1"/>
-    </linearGradient>
-    <clipPath id="r">
-        <rect width="{total_width}" height="20" rx="3" fill="#fff"/>
-    </clipPath>
-    <g clip-path="url(#r)">
-        <rect width="{label_width}" height="20" fill="#555"/>
-        <rect x="{label_width}" width="{message_width}" height="20" fill="{fill_color}"/>
-        <rect width="{total_width}" height="20" fill="url(#s)"/>
-    </g>
-    <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="110">
-        <text aria-hidden="true" x="{label_width//2 * 10}" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="{(label_width-10) * 10}">{label}</text>
-        <text x="{label_width//2 * 10}" y="140" transform="scale(.1)" fill="#fff" textLength="{(label_width-10) * 10}">{label}</text>
-        <text aria-hidden="true" x="{(label_width + message_width//2) * 10}" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="{(message_width-10) * 10}">{message}</text>
-        <text x="{(label_width + message_width//2) * 10}" y="140" transform="scale(.1)" fill="#fff" textLength="{(message_width-10) * 10}">{message}</text>
-    </g>
-</svg>'''
+        svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{total_width}" height="20">
+        <linearGradient id="b" x2="0" y2="100%">
+            <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+            <stop offset="1" stop-opacity=".1"/>
+        </linearGradient>
+        <mask id="a">
+            <rect width="{total_width}" height="20" rx="3" fill="#fff"/>
+        </mask>
+        <g mask="url(#a)">
+            <rect width="{label_width}" height="20" fill="#555"/>
+            <rect x="{label_width}" width="{message_width}" height="20" fill="{color}"/>
+            <rect width="{total_width}" height="20" fill="url(#b)"/>
+        </g>
+        <g fill="#fff" text-anchor="middle" font-family="DejaVu Sans,Verdana,Geneva,sans-serif" font-size="11">
+            <text x="{label_width/2}" y="15" fill="#010101" fill-opacity=".3">{label}</text>
+            <text x="{label_width/2}" y="14">{label}</text>
+            <text x="{label_width + message_width/2}" y="15" fill="#010101" fill-opacity=".3">{message}</text>
+            <text x="{label_width + message_width/2}" y="14">{message}</text>
+        </g>
+        </svg>'''
         return svg
 
     def do_GET(self):
         """Handle GET requests."""
-        if self.path == '/':
-            self.path = '/index.html'
-            return http.server.SimpleHTTPRequestHandler.do_GET(self)
-        if self.path == '/stats':
+        # Parse the URL and query parameters
+        parsed_path = urllib.parse.urlparse(self.path)
+        path = parsed_path.path
+        query_params = urllib.parse.parse_qs(parsed_path.query)
+
+        # Match API endpoints
+        if path == "/api/stats":
             self.send_stats()
-        elif self.path == '/tracked-repos':
+        elif path == "/api/sync":
+            self.send_sync_response()
+        elif path == "/api/tracked-repos":
             self.send_tracked_repos()
-        elif self.path == '/export':
-            self.send_export()
-        elif self.path.startswith('/chart-data'):
-            self.send_chart_data()
-        elif self.path.startswith('/badge/'):
-            match = re.match(r'/badge/([\w-]+)', self.path)
-            if match:
-                repo_name = match.group(1)
-                self.send_badge(repo_name)
+        elif path == "/api/repo/history":
+            repo_name = query_params.get('repo', [None])[0]
+            history_type = query_params.get('type', ['clones'])[0]
+            days = int(query_params.get('days', [30])[0])
+            if repo_name:
+                self.send_repo_history(repo_name, history_type, days)
             else:
-                self.send_error(
-                    HTTPStatus.BAD_REQUEST, "Invalid badge URL format. Use /badge/<repo-name>"
-                )
+                self._send_json_error("Missing 'repo' parameter", HTTPStatus.BAD_REQUEST)
+        elif path == "/api/export":
+            self.send_database_export()
+        elif match := re.match(r"/badge/(.+)/total\.svg", path):
+            repo_name = match.group(1)
+            self.send_badge(repo_name)
+        elif path == "/" or path == "/index.html":
+            super().do_GET()
+        elif path == "/favicon.ico":
+            # Send 404 for favicon to avoid errors
+            self.send_error(HTTPStatus.NOT_FOUND, "Favicon not found")
+        elif path.startswith("/static/"):
+            # Remove /static/ prefix for the static directory
+            self.path = path[8:]  # Remove "/static/" prefix
+            super().do_GET()
         else:
+            # For all other paths, try to serve from static directory
             super().do_GET()
 
     def do_POST(self):
         """Handle POST requests."""
-        if self.path == '/sync':
-            self.send_sync_response()
-        elif self.path == '/tracked-repos':
-            self.handle_add_repo()
-        elif self.path == '/import':
-            self.handle_import()
-        else:
-            self.send_error(HTTPStatus.NOT_FOUND, "Endpoint not found")
+        parsed_path = urllib.parse.urlparse(self.path)
+        path = parsed_path.path
 
-    def do_DELETE(self):
-        """Handle DELETE requests."""
-        if self.path.startswith('/tracked-repos/'):
-            match = re.match(r'/tracked-repos/([\w-]+)', self.path)
-            if match:
-                repo_name = match.group(1)
-                self.handle_remove_repo(repo_name)
-            else:
-                self.send_error(HTTPStatus.BAD_REQUEST, "Invalid repo URL format")
+        if path == "/api/tracked-repos/add":
+            self.add_tracked_repo()
+        elif path == "/api/tracked-repos/remove":
+            self.remove_tracked_repo()
+        elif path == "/api/import":
+            self.import_database()
         else:
             self.send_error(HTTPStatus.NOT_FOUND, "Endpoint not found")
 
@@ -147,32 +143,17 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
     def get_stats_for_repo(self, repo_name: str) -> dict:
         """Retrieve statistics for a single repository."""
         try:
-            with sqlite3.connect(DB_PATH) as conn:
-                conn.row_factory = sqlite3.Row
-                
-                # Get clone stats
-                cursor = conn.execute(
-                    "SELECT SUM(count) as total_clones, SUM(uniques) as total_unique_clones "
-                    "FROM clone_history WHERE repo = ?",
-                    (repo_name,)
-                )
-                clone_row = cursor.fetchone()
-                
-                # Get view stats
-                cursor = conn.execute(
-                    "SELECT SUM(count) as total_views, SUM(uniques) as total_unique_views "
-                    "FROM view_history WHERE repo = ?",
-                    (repo_name,)
-                )
-                view_row = cursor.fetchone()
-                
+            db_manager = get_database_manager()
+            with db_manager:
+                adapter = get_database_adapter(db_manager)
+                stats = adapter.get_stats_for_repo(repo_name)
                 return {
-                    "total_clones": clone_row['total_clones'] if clone_row and clone_row['total_clones'] is not None else 0,
-                    "total_unique_clones": clone_row['total_unique_clones'] if clone_row and clone_row['total_unique_clones'] is not None else 0,
-                    "total_views": view_row['total_views'] if view_row and view_row['total_views'] is not None else 0,
-                    "total_unique_views": view_row['total_unique_views'] if view_row and view_row['total_unique_views'] is not None else 0
+                    "total_clones": stats.get('total_clones', 0),
+                    "total_unique_clones": stats.get('total_unique_clones', 0),
+                    "total_views": stats.get('total_views', 0),
+                    "total_unique_views": stats.get('total_unique_views', 0)
                 }
-        except sqlite3.Error as e:
+        except Exception as e:
             logger.error(f"Database error for repo {repo_name}: {e}")
             return None
 
@@ -196,389 +177,242 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
+        self.send_header("Content-Length", str(len(svg_content.encode('utf-8'))))
         self.end_headers()
         self.wfile.write(svg_content.encode('utf-8'))
 
-    def get_all_stats(self):
+    def send_stats(self):
         """Retrieve all statistics from the database."""
         try:
-            with sqlite3.connect(DB_PATH) as conn:
-                conn.row_factory = sqlite3.Row
-
-                # Get clone history
-                cursor = conn.execute(
-                    "SELECT repo, timestamp, count, uniques FROM clone_history ORDER BY repo, timestamp"
-                )
-                clone_rows = cursor.fetchall()
-
-                # Get view history
-                cursor = conn.execute(
-                    "SELECT repo, timestamp, count, uniques FROM view_history ORDER BY repo, timestamp"
-                )
-                view_rows = cursor.fetchall()
-
-                # Get star counts
-                cursor = conn.execute("SELECT repo, star_count FROM repo_stars")
-                star_rows = cursor.fetchall()
-                star_counts = {
-                    row['repo']: row['star_count'] for row in star_rows
-                }
-
-                # Combine clone and view data
+            db_manager = get_database_manager()
+            with db_manager:
+                adapter = get_database_adapter(db_manager)
+                results = adapter.get_all_repos_summary()
+                
                 stats = {
-                    "clone_history": [],
-                    "view_history": []
+                    "success": True,
+                    "stats": results,
+                    "github_username": os.environ.get('GITHUB_USERNAME', ''),
+                    "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
                 }
-
-                # Add clone data
-                for row in clone_rows:
-                    stat = dict(row)
-                    stat['star_count'] = star_counts.get(row['repo'], 0)
-                    stat['type'] = 'clone'
-                    stats["clone_history"].append(stat)
-
-                # Add view data
-                for row in view_rows:
-                    stat = dict(row)
-                    stat['star_count'] = star_counts.get(row['repo'], 0)
-                    stat['type'] = 'view'
-                    stats["view_history"].append(stat)
-
-                return stats
-        except sqlite3.Error as e:
-            logger.error(f"Database error: {e}")
-            return None
-
-    def send_stats(self):
-        """Send the clone statistics as a JSON response."""
-        stats = self.get_all_stats()
-
-        if stats is None:
-            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Failed to retrieve stats from the database.")
-            return
-
-        github_username = os.environ.get('GITHUB_USERNAME', '')
-        self._send_json_response({
-            "stats": stats,
-            "github_username": github_username
-        })
+                self._send_json_response(stats)
+        except Exception as e:
+            logger.error(f"Failed to retrieve stats: {e}")
+            self._send_json_error(f"Database error: {str(e)}")
 
     def send_tracked_repos(self):
         """Send the list of tracked repositories."""
         try:
-            with DatabaseManager(DB_PATH) as db_manager:
+            db_manager = get_database_manager()
+            with db_manager:
                 db_manager.setup_database()
                 tracked_repos = db_manager.get_tracked_repos()
-
-            self._send_json_response({"tracked_repos": tracked_repos})
+                
+            self._send_json_response({
+                "success": True,
+                "repositories": tracked_repos
+            })
         except Exception as e:
-            logger.error(f"Error getting tracked repos: {e}")
-            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Failed to get tracked repositories")
+            logger.error(f"Failed to retrieve tracked repos: {e}")
+            self._send_json_error(f"Database error: {str(e)}")
 
-    def handle_add_repo(self):
+    def add_tracked_repo(self):
         """Handle adding a new tracked repository."""
         try:
-            content_length = int(self.headers.get('Content-Length', 0))
+            content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             data = json.loads(post_data.decode('utf-8'))
-
-            repo_name = data.get('repo_name', '').strip()
+            
+            repo_name = data.get('repo_name')
             if not repo_name:
-                self.send_error(HTTPStatus.BAD_REQUEST, "Repository name is required")
+                self._send_json_error("Missing 'repo_name' in request body", HTTPStatus.BAD_REQUEST)
                 return
 
-            with DatabaseManager(DB_PATH) as db_manager:
+            db_manager = get_database_manager()
+            with db_manager:
                 db_manager.setup_database()
                 success = db_manager.add_tracked_repo(repo_name)
-
+                
             if success:
-                self._send_json_response({
-                    "success": True,
-                    "message": f"Repository {repo_name} added successfully"
-                })
+                self._send_json_response({"success": True, "message": f"Added {repo_name} to tracked repositories"})
+                logger.info(f"Added {repo_name} to tracked repositories")
             else:
-                self._send_json_error("Failed to add repository")
-
+                self._send_json_error(f"Failed to add {repo_name} to tracked repositories")
         except json.JSONDecodeError:
-            self.send_error(HTTPStatus.BAD_REQUEST, "Invalid JSON data")
+            self._send_json_error("Invalid JSON in request body", HTTPStatus.BAD_REQUEST)
         except Exception as e:
-            logger.error(f"Error adding repo: {e}")
-            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Failed to add repository")
+            logger.error(f"Failed to add tracked repo: {e}")
+            self._send_json_error(f"Server error: {str(e)}")
 
-    def handle_remove_repo(self, repo_name):
+    def remove_tracked_repo(self):
         """Handle removing a tracked repository."""
         try:
-            with DatabaseManager(DB_PATH) as db_manager:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            
+            repo_name = data.get('repo_name')
+            if not repo_name:
+                self._send_json_error("Missing 'repo_name' in request body", HTTPStatus.BAD_REQUEST)
+                return
+
+            db_manager = get_database_manager()
+            with db_manager:
                 db_manager.setup_database()
                 success = db_manager.remove_tracked_repo(repo_name)
-
+                
             if success:
-                self._send_json_response({
-                    "success": True,
-                    "message": f"Repository {repo_name} removed successfully"
-                })
+                self._send_json_response({"success": True, "message": f"Removed {repo_name} from tracked repositories"})
+                logger.info(f"Removed {repo_name} from tracked repositories")
             else:
-                self._send_json_error("Failed to remove repository")
-
+                self._send_json_error(f"Failed to remove {repo_name} from tracked repositories")
+        except json.JSONDecodeError:
+            self._send_json_error("Invalid JSON in request body", HTTPStatus.BAD_REQUEST)
         except Exception as e:
-            logger.error(f"Error removing repo: {e}")
-            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Failed to remove repository")
+            logger.error(f"Failed to remove tracked repo: {e}")
+            self._send_json_error(f"Server error: {str(e)}")
 
-    def send_chart_data(self):
-        """Send chart data for time-series visualization."""
+    def send_repo_history(self, repo_name: str, history_type: str = 'clones', days: int = 30):
+        """Send historical data for a specific repository."""
         try:
-            # Parse query parameters
-            parsed_url = urllib.parse.urlparse(self.path)
-            query_params = urllib.parse.parse_qs(parsed_url.query)
-
-            # Get parameters with defaults
-            days = int(query_params.get('days', ['30'])[0])  # Default to 30 days
-            repo_filter = query_params.get('repo', [None])[0]  # Optional repo filter
-
-            # Calculate date threshold
-            from datetime import datetime, timedelta
-            if days > 0:
-                date_threshold = datetime.now() - timedelta(days=days)
-                date_threshold_str = date_threshold.isoformat()
-            else:
-                date_threshold_str = None  # Show all data
-
-            with sqlite3.connect(DB_PATH) as conn:
-                conn.row_factory = sqlite3.Row
-
-                # Build WHERE conditions for filtering
-                where_conditions = []
-                params_clone = []
-                params_view = []
-
-                if date_threshold_str:
-                    where_conditions.append("timestamp >= ?")
-                    params_clone.append(date_threshold_str)
-                    params_view.append(date_threshold_str)
-
-                if repo_filter:
-                    where_conditions.append("repo = ?")
-                    params_clone.append(repo_filter)
-                    params_view.append(repo_filter)
-
-                where_clause = ""
-                if where_conditions:
-                    where_clause = " WHERE " + " AND ".join(where_conditions)
-
-                # Get clone data
-                clone_query = "SELECT repo, timestamp, count, uniques FROM clone_history" + where_clause + " ORDER BY repo, timestamp"
-                cursor = conn.execute(clone_query, params_clone)
-                clone_rows = cursor.fetchall()
-
-                # Get view data
-                view_query = "SELECT repo, timestamp, count, uniques FROM view_history" + where_clause + " ORDER BY repo, timestamp"
-                cursor = conn.execute(view_query, params_view)
-                view_rows = cursor.fetchall()
-
-                # Create dictionaries for O(1) lookup by (repo, date) key
-                data_by_repo_date = {}
-                all_repos = set()
-                all_dates_by_repo = {}
-
-                # Process clone data
-                for row in clone_rows:
-                    repo = row['repo']
-                    all_repos.add(repo)
-                    timestamp = datetime.fromisoformat(row['timestamp'].replace('Z', '+00:00'))
-                    formatted_date = timestamp.strftime('%Y-%m-%d')
-                    
-                    if repo not in all_dates_by_repo:
-                        all_dates_by_repo[repo] = set()
-                    all_dates_by_repo[repo].add(formatted_date)
-                    
-                    key = (repo, formatted_date)
-                    if key not in data_by_repo_date:
-                        data_by_repo_date[key] = {'clones': 0, 'unique_clones': 0, 'views': 0, 'unique_views': 0}
-                    data_by_repo_date[key]['clones'] = row['count']
-                    data_by_repo_date[key]['unique_clones'] = row['uniques']
-
-                # Process view data
-                for row in view_rows:
-                    repo = row['repo']
-                    all_repos.add(repo)
-                    timestamp = datetime.fromisoformat(row['timestamp'].replace('Z', '+00:00'))
-                    formatted_date = timestamp.strftime('%Y-%m-%d')
-                    
-                    if repo not in all_dates_by_repo:
-                        all_dates_by_repo[repo] = set()
-                    all_dates_by_repo[repo].add(formatted_date)
-                    
-                    key = (repo, formatted_date)
-                    if key not in data_by_repo_date:
-                        data_by_repo_date[key] = {'clones': 0, 'unique_clones': 0, 'views': 0, 'unique_views': 0}
-                    data_by_repo_date[key]['views'] = row['count']
-                    data_by_repo_date[key]['unique_views'] = row['uniques']
-
-                # Build chart data efficiently
-                chart_data = {}
-                for repo in all_repos:
-                    if repo not in all_dates_by_repo:
-                        continue
-                    
-                    # Sort dates for consistent ordering
-                    sorted_dates = sorted(all_dates_by_repo[repo])
-                    
-                    chart_data[repo] = {
-                        'labels': sorted_dates,
-                        'clones': [],
-                        'unique_clones': [],
-                        'views': [],
-                        'unique_views': []
-                    }
-                    
-                    # Populate arrays using O(1) dictionary lookups
-                    for date in sorted_dates:
-                        key = (repo, date)
-                        data = data_by_repo_date.get(key, {'clones': 0, 'unique_clones': 0, 'views': 0, 'unique_views': 0})
-                        chart_data[repo]['clones'].append(data['clones'])
-                        chart_data[repo]['unique_clones'].append(data['unique_clones'])
-                        chart_data[repo]['views'].append(data['views'])
-                        chart_data[repo]['unique_views'].append(data['unique_views'])
-
+            db_manager = get_database_manager()
+            with db_manager:
+                adapter = get_database_adapter(db_manager)
+                history_data = adapter.get_repo_history(repo_name, history_type, days)
+                
             self._send_json_response({
-                "chart_data": chart_data,
-                "days_requested": days,
-                "repo_filter": repo_filter
+                "success": True,
+                "repo": repo_name,
+                "type": history_type,
+                "days": days,
+                "data": history_data
             })
-
         except Exception as e:
-            logger.error(f"Error getting chart data: {e}")
-            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Failed to retrieve chart data")
+            logger.error(f"Failed to retrieve history for {repo_name}: {e}")
+            self._send_json_error(f"Database error: {str(e)}")
 
-    def send_export(self):
+    def send_database_export(self):
         """Export database as JSON."""
         try:
-            with DatabaseManager(DB_PATH) as db_manager:
+            db_manager = get_database_manager()
+            with db_manager:
                 db_manager.setup_database()
                 export_data = db_manager.export_database()
-
-            self.send_response(HTTPStatus.OK)
-            self.send_header("Content-type", "application/json")
-            self.send_header(
-                "Content-Disposition",
-                f"attachment; filename=github_stats_backup_{export_data['export_timestamp'][:10]}.json"
-            )
-            self.end_headers()
-            self.wfile.write(json.dumps(export_data, indent=2).encode('utf-8'))
-
+                
+            self._send_json_response({
+                "success": True,
+                "export": export_data,
+                "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
+            })
         except Exception as e:
-            logger.error(f"Error exporting database: {e}")
-            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Failed to export database")
+            logger.error(f"Failed to export database: {e}")
+            self._send_json_error(f"Export error: {str(e)}")
 
-    def handle_import(self):
-        """Handle database import from JSON."""
+    def import_database(self):
+        """Import database from JSON."""
         try:
-            content_length = int(self.headers.get('Content-Length', 0))
-            if content_length == 0:
-                self.send_error(HTTPStatus.BAD_REQUEST, "No data provided")
+            content_length = int(self.headers['Content-Length'])
+            if content_length > 10 * 1024 * 1024:  # 10MB limit
+                self._send_json_error("Request body too large", HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
                 return
-
+                
             post_data = self.rfile.read(content_length)
-
-            # Check if it's form data (file upload) or JSON
-            content_type = self.headers.get('Content-Type', '')
-            if 'multipart/form-data' in content_type:
-                # Handle file upload
-                # Simple multipart parsing (for file uploads)
-                boundary = content_type.split('boundary=')[1].encode()
-                parts = post_data.split(b'--' + boundary)
-
-                file_data = None
-                replace_existing = False
-
-                for part in parts:
-                    if b'Content-Disposition' in part and b'name="file"' in part:
-                        # Extract file content
-                        content_start = part.find(b'\r\n\r\n') + 4
-                        if content_start > 3:
-                            file_data = part[content_start:].rstrip(b'\r\n')
-                    elif b'name="replace_existing"' in part:
-                        content_start = part.find(b'\r\n\r\n') + 4
-                        if content_start > 3:
-                            value = part[content_start:].rstrip(b'\r\n').decode('utf-8')
-                            replace_existing = value.lower() == 'true'
-
-                if not file_data:
-                    self.send_error(HTTPStatus.BAD_REQUEST, "No file data found")
-                    return
-
-                import_data = json.loads(file_data.decode('utf-8'))
-            else:
-                # Handle direct JSON
-                import_data = json.loads(post_data.decode('utf-8'))
-                replace_existing = import_data.get('replace_existing', False)
-
-            # Validate import data structure
-            required_keys = ['clone_history', 'tracked_repos', 'repo_stars']
-            if not all(key in import_data for key in required_keys):
-                self.send_error(HTTPStatus.BAD_REQUEST, "Invalid backup file format")
+            data = json.loads(post_data.decode('utf-8'))
+            
+            import_data = data.get('import')
+            replace_existing = data.get('replace_existing', False)
+            
+            if not import_data:
+                self._send_json_error("Missing 'import' data in request body", HTTPStatus.BAD_REQUEST)
                 return
 
-            with DatabaseManager(DB_PATH) as db_manager:
+            db_manager = get_database_manager()
+            with db_manager:
                 db_manager.setup_database()
                 success = db_manager.import_database(import_data, replace_existing)
-
+                
             if success:
                 self._send_json_response({
                     "success": True,
                     "message": "Database imported successfully"
                 })
+                logger.info("Database imported successfully")
             else:
                 self._send_json_error("Failed to import database")
-
         except json.JSONDecodeError:
-            self.send_error(HTTPStatus.BAD_REQUEST, "Invalid JSON data")
+            self._send_json_error("Invalid JSON in request body", HTTPStatus.BAD_REQUEST)
         except Exception as e:
-            logger.error(f"Error importing database: {e}")
-            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Failed to import database")
+            logger.error(f"Failed to import database: {e}")
+            self._send_json_error(f"Import error: {str(e)}")
 
 
-def run_background_sync():
-    """Periodically run the sync task based on the configured interval."""
-    interval_str = os.environ.get("SYNC_INTERVAL", "daily").lower()
-    intervals = {"daily": 86400, "weekly": 604800, "biweekly": 1209600}
-    sleep_duration = intervals.get(interval_str, 86400)
-
-    logger.info(f"Background sync configured with a {interval_str} interval.")
-
-    # Wait a few seconds for the server to start before the initial sync.
-    time.sleep(5)
-    logger.info("Initial background sync started.")
-    run_sync()
-    logger.info("Initial background sync finished.")
-
-    while True:
-        logger.info(f"Background sync sleeping for {sleep_duration} seconds.")
-        time.sleep(sleep_duration)
-        logger.info("Background sync started.")
-        run_sync()
-        logger.info("Background sync finished.")
-
-
-def run_server(port=None):
-    """Run the web server."""
-    if port is None:
-        port = int(os.environ.get("PORT", 8000))
+class BackgroundSyncThread(threading.Thread):
+    """A background thread to periodically sync stats."""
     
-    # Start the background sync in a separate thread
-    sync_thread = threading.Thread(target=run_background_sync, daemon=True)
-    sync_thread.start()
+    def __init__(self, interval=3600):
+        """
+        Initialize the background sync thread.
+        
+        Args:
+            interval: Sync interval in seconds (default: 1 hour)
+        """
+        super().__init__(daemon=True)
+        self.interval = interval
+        self.running = True
+        
+    def run(self):
+        """Run the background sync loop."""
+        logger.info(f"Starting background sync thread (interval: {self.interval}s)")
+        
+        while self.running:
+            try:
+                # Wait for the interval
+                time.sleep(self.interval)
+                
+                # Run sync
+                logger.info("Running scheduled sync...")
+                success, message = run_sync()
+                if success:
+                    logger.info("Scheduled sync completed successfully")
+                else:
+                    logger.error(f"Scheduled sync failed: {message}")
+                    
+            except Exception as e:
+                logger.error(f"Error in background sync: {e}")
+                
+    def stop(self):
+        """Stop the background sync thread."""
+        self.running = False
 
+
+def run_server(port: int = 8080, enable_background_sync: bool = True, sync_interval: int = 3600):
+    """
+    Run the statistics web server.
+    
+    Args:
+        port: Port to listen on (default: 8080)
+        enable_background_sync: Whether to enable background syncing (default: True)
+        sync_interval: Sync interval in seconds (default: 3600 = 1 hour)
+    """
+    # Start background sync thread if enabled
+    if enable_background_sync:
+        sync_thread = BackgroundSyncThread(sync_interval)
+        sync_thread.start()
+    
+    # Start the web server
     with http.server.HTTPServer(("", port), StatsRequestHandler) as httpd:
-        logger.info(f"Serving at port {port}")
-        logger.info(f"Access the UI at http://localhost:{port}")
-        httpd.serve_forever()
-
-
-def main():
-    """Main entry point for the server script."""
-    run_server()
+        logger.info(f"Starting server on port {port}")
+        logger.info(f"Visit http://localhost:{port} to view statistics")
+        if enable_background_sync:
+            logger.info(f"Background sync enabled (interval: {sync_interval}s)")
+        
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            logger.info("Server stopped by user")
+            if enable_background_sync:
+                sync_thread.stop()
 
 
 if __name__ == "__main__":
-    main()
+    run_server()
