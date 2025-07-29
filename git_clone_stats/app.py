@@ -9,43 +9,12 @@ This tool fetches clone data from the GitHub API and maintains historical record
 import logging
 import os
 import sqlite3
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 import requests
 
-
-@dataclass
-class CloneRecord:
-    """Represents a single clone record with count, timestamp, and unique clones."""
-    count: int
-    timestamp: str
-    uniques: int
-
-    def __str__(self) -> str:
-        return f"{self.count} {self.timestamp} {self.uniques}"
-
-    @classmethod
-    def from_github_entry(cls, entry: Dict[str, any]) -> 'CloneRecord':
-        """Create a CloneRecord from GitHub API response entry."""
-        return cls(entry["count"], entry["timestamp"], entry["uniques"])
-
-
-@dataclass
-class ViewRecord:
-    """Represents a single view record with count, timestamp, and unique views."""
-    count: int
-    timestamp: str
-    uniques: int
-
-    def __str__(self) -> str:
-        return f"{self.count} {self.timestamp} {self.uniques}"
-
-    @classmethod
-    def from_github_entry(cls, entry: Dict[str, any]) -> 'ViewRecord':
-        """Create a ViewRecord from GitHub API response entry."""
-        return cls(entry["count"], entry["timestamp"], entry["uniques"])
+from .models import CloneRecord, ViewRecord
 
 
 class DatabaseManager:

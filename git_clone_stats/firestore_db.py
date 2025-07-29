@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from google.cloud import firestore
-from .app import CloneRecord, ViewRecord
+from .models import CloneRecord, ViewRecord
 
 
 class FirestoreDatabaseManager:
