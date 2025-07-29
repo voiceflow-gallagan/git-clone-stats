@@ -67,12 +67,16 @@ class SQLiteAdapter(DatabaseAdapter):
             )
             recent_view_row = cursor.fetchone()
             
-            # Get latest timestamp
+            # Get sync timestamp and first collected timestamp
             cursor = conn.execute(
-                "SELECT MAX(timestamp) as last_updated FROM "
-                "(SELECT timestamp FROM clone_history WHERE repo = ? "
-                "UNION SELECT timestamp FROM view_history WHERE repo = ?)",
-                (repo_name, repo_name)
+                "SELECT tr.last_sync, "
+                "MIN(COALESCE(ch.timestamp, vh.timestamp)) as first_collected "
+                "FROM tracked_repos tr "
+                "LEFT JOIN clone_history ch ON tr.repo_name = ch.repo "
+                "LEFT JOIN view_history vh ON tr.repo_name = vh.repo "
+                "WHERE tr.repo_name = ? "
+                "GROUP BY tr.repo_name",
+                (repo_name,)
             )
             timestamp_row = cursor.fetchone()
             
@@ -86,7 +90,8 @@ class SQLiteAdapter(DatabaseAdapter):
                 "last_14_days_unique_clones": recent_clone_row["recent_unique_clones"] or 0,
                 "last_14_days_views": recent_view_row["recent_views"] or 0,
                 "last_14_days_unique_views": recent_view_row["recent_unique_views"] or 0,
-                "last_updated": timestamp_row["last_updated"] if timestamp_row else None
+                "last_updated": timestamp_row["last_sync"] if timestamp_row else None,
+                "first_collected": timestamp_row["first_collected"] if timestamp_row else None
             }
     
     def get_all_repos_summary(self) -> List[dict]:
@@ -108,8 +113,8 @@ class SQLiteAdapter(DatabaseAdapter):
                     COALESCE(cs.last_14_days_unique_clones, 0) as last_14_days_unique_clones,
                     COALESCE(vs.last_14_days_views, 0) as last_14_days_views,
                     COALESCE(vs.last_14_days_unique_views, 0) as last_14_days_unique_views,
-                    -- Timestamps
-                    COALESCE(cs.last_clone_timestamp, vs.last_view_timestamp) as last_updated,
+                    -- Timestamps - use actual sync time and earliest data point
+                    tr.last_sync as last_updated,
                     COALESCE(cs.first_clone_timestamp, vs.first_view_timestamp) as first_collected
                 FROM tracked_repos tr
                 LEFT JOIN (

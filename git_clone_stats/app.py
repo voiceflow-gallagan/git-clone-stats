@@ -247,6 +247,18 @@ class DatabaseManager:
             self.logger.error(f"Failed to remove tracked repo {repo_name}: {e}")
             return False
 
+    def update_tracked_repo(self, repo_name: str):
+        """Update the last sync time for a tracked repo."""
+        try:
+            with self.conn:
+                self.conn.execute(
+                    "UPDATE tracked_repos SET last_sync = ? WHERE repo_name = ?",
+                    (datetime.utcnow().isoformat() + 'Z', repo_name)
+                )
+            self.logger.debug(f"Updated last_sync for {repo_name}")
+        except sqlite3.Error as e:
+            self.logger.error(f"Failed to update last_sync for {repo_name}: {e}")
+
     def update_repo_stars(self, repo: str, star_count: int) -> bool:
         """Update star count for a repository."""
         try:
@@ -517,6 +529,9 @@ class GitHubStatsTracker:
             metadata = self._fetch_repo_metadata(repo)
             star_count = metadata.get("stargazers_count", 0)
             self.db_manager.update_repo_stars(repo, star_count)
+
+            # Update the last_sync timestamp for this repo
+            self.db_manager.update_tracked_repo(repo)
 
             self.logger.info(f"Update for {repo} completed successfully")
 
