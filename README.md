@@ -17,7 +17,7 @@ The tool fetches clone data and view/traffic statistics from the GitHub API and 
 
 
 <div align="center">
-<video width=832 src="https://github.com/user-attachments/assets/ba4b670f-f0d3-4db6-9c18-e9480486ba84"></video>
+<video width=832 src="https://github.com/user-attachments/assets/c8704ac1-fd99-4bb7-8763-421eebc7c487"></video>
 </div>
 
 ---
