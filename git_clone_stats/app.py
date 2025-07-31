@@ -66,7 +66,8 @@ class DatabaseManager:
                     CREATE TABLE IF NOT EXISTS tracked_repos (
                         repo_name TEXT PRIMARY KEY,
                         added_at TEXT NOT NULL,
-                        is_active INTEGER DEFAULT 1
+                        is_active INTEGER DEFAULT 1,
+                        last_sync TEXT
                     )
                 """)
                 self.conn.execute("""
@@ -526,7 +527,7 @@ def load_configuration() -> Tuple[str, str, List[str], str]:
     # Default repository list (only used for initial setup)
     repos = []
 
-    db_path = "github_stats.db"
+    db_path = os.environ.get('DATABASE_PATH', 'github_stats.db')
 
     return github_token, github_username, repos, db_path
 

@@ -28,7 +28,7 @@ class SQLiteAdapter(DatabaseAdapter):
     def __init__(self, db_manager):
         self.db_manager = db_manager
         # Use absolute path to ensure we're accessing the right database
-        self.db_path = os.path.abspath("github_stats.db")
+        self.db_path = os.path.abspath(os.environ.get('DATABASE_PATH', 'github_stats.db'))
     
     def get_stats_for_repo(self, repo_name: str) -> dict:
         """Retrieve statistics for a single repository."""

@@ -417,6 +417,17 @@ def run_server(port: int = 8080, enable_background_sync: bool = True, sync_inter
         enable_background_sync: Whether to enable background syncing (default: True)
         sync_interval: Sync interval in seconds (default: 3600 = 1 hour)
     """
+    # Initialize database on startup
+    db_path = os.environ.get('DATABASE_PATH', 'github_stats.db')
+    logger.info(f"Initializing database at: {db_path}")
+    
+    # Get database manager and set up tables
+    db_manager = get_database_manager()
+    if hasattr(db_manager, 'setup_database'):
+        with db_manager as db:
+            db.setup_database()
+            logger.info("Database tables initialized successfully")
+    
     # Start background sync thread if enabled
     if enable_background_sync:
         sync_thread = BackgroundSyncThread(sync_interval)

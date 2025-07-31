@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  git-stats:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_USERNAME=${GITHUB_USERNAME}
+      - USE_FIRESTORE=${USE_FIRESTORE:-false}
+      - PORT=${PORT:-8080}
+    volumes:
+      # Mount data directory for SQLite persistence
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/stats').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
