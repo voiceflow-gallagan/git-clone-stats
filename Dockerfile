@@ -13,7 +13,7 @@ WORKDIR /build
 RUN pip install uv
 
 # Copy dependency files first for better layer caching
-COPY requirements.txt pyproject.toml uv.lock* ./
+COPY requirements.txt pyproject.toml ./
 
 # Create and activate virtual environment
 RUN python -m venv /opt/venv
