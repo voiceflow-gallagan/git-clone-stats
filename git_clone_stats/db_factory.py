@@ -34,4 +34,4 @@ def get_database_manager():
     # Default to SQLite
     from .app import DatabaseManager
     logger.info("Using SQLite database")
-    return DatabaseManager("github_stats.db")
+    return DatabaseManager(os.environ.get('DATABASE_PATH', 'github_stats.db'))

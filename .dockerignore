@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+*.egg-info/
+dist/
+build/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+github_stats.db
+*.db
+logs/
+*.log
+.env
+.env.*
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Google Cloud
+.gcloudignore
+app.yaml
+
+# Development
+scripts/
+tests/
+landing-site/
+diffout.txt
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml

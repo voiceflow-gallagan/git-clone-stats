@@ -70,6 +70,31 @@ cd git-clone-stats
 pip install -e .
 ```
 
+### Docker (recommended for production)
+
+Run git-stats in a production-ready Docker container:
+
+```bash
+# Using Docker Compose (easiest)
+docker-compose up -d
+
+# Or build and run manually
+docker build -t git-stats .
+docker run -d \
+  -p 8080:8080 \
+  -e GITHUB_TOKEN=your_token \
+  -e GITHUB_USERNAME=your_username \
+  -v $(pwd)/data:/app/data \
+  git-stats
+```
+
+The Docker image includes:
+- Multi-stage build for minimal size (~150MB)
+- Non-root user execution for security
+- Health checks for container orchestration
+- Automatic restart on failure
+- Volume mounting for persistent SQLite storage
+
 ## Configuration
 
 Set up your GitHub Personal Access Token and Username. This requires a GitHub Personal Access Token with the `repo` scope to access repository traffic data.
@@ -266,7 +291,28 @@ Interactive time-series visualization showing:
   **Example:**
   `http://localhost:8000/api/badge/reclaimed` returns an SVG badge showing the clone count
 
-## Easy Deployment to App Engine
+## Deployment Options
+
+### Docker Deployment
+
+For production deployments, Docker provides the most flexible and portable solution:
+
+```bash
+# Quick start with docker-compose
+docker-compose up -d
+
+# Access the dashboard at http://localhost:8080
+```
+
+Configure environment variables in a `.env` file:
+```bash
+GITHUB_TOKEN=your_github_token
+GITHUB_USERNAME=your_username
+USE_FIRESTORE=false
+PORT=8080
+```
+
+### Google Cloud App Engine
 
 Deploy to Google Cloud App Engine in minutes. See the complete deployment guide: [gcloud_deploy.md](gcloud_deploy.md)
 
