@@ -10,6 +10,7 @@ services:
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GITHUB_USERNAME=${GITHUB_USERNAME}
+      - GITHUB_ORG=${GITHUB_ORG}
       - USE_FIRESTORE=${USE_FIRESTORE:-false}
       - PORT=${PORT:-8080}
     volumes:

@@ -113,6 +113,8 @@ class SQLiteAdapter(DatabaseAdapter):
                     COALESCE(cs.last_14_days_unique_clones, 0) as last_14_days_unique_clones,
                     COALESCE(vs.last_14_days_views, 0) as last_14_days_views,
                     COALESCE(vs.last_14_days_unique_views, 0) as last_14_days_unique_views,
+                    -- Star count
+                    COALESCE(rs.star_count, 0) as star_count,
                     -- Timestamps - use actual sync time and earliest data point
                     tr.last_sync as last_updated,
                     COALESCE(cs.first_clone_timestamp, vs.first_view_timestamp) as first_collected
@@ -141,6 +143,7 @@ class SQLiteAdapter(DatabaseAdapter):
                     FROM view_history 
                     GROUP BY repo
                 ) vs ON tr.repo_name = vs.repo
+                LEFT JOIN repo_stars rs ON tr.repo_name = rs.repo
                 WHERE tr.is_active = 1
                 ORDER BY tr.repo_name
             """)
@@ -157,6 +160,7 @@ class SQLiteAdapter(DatabaseAdapter):
                     "last_14_days_unique_clones": row["last_14_days_unique_clones"],
                     "last_14_days_views": row["last_14_days_views"],
                     "last_14_days_unique_views": row["last_14_days_unique_views"],
+                    "star_count": row["star_count"],
                     "last_updated": row["last_updated"],
                     "first_collected": row["first_collected"]
                 })

@@ -83,6 +83,7 @@ docker run -d \
   -p 8080:8080 \
   -e GITHUB_TOKEN=your_token \
   -e GITHUB_USERNAME=your_username \
+  -e GITHUB_ORG=your_organization \
   -v $(pwd)/data:/app/data \
   git-stats
 ```
@@ -104,6 +105,54 @@ Set up your GitHub Personal Access Token and Username. This requires a GitHub Pe
 ```bash
 export GITHUB_TOKEN='your_github_personal_access_token'
 export GITHUB_USERNAME='your_github_username'
+export GITHUB_ORG='your_organization_name'  # Optional: for tracking organization repositories
+```
+
+### Organization Repository Support
+
+Git-Stats provides intelligent support for tracking repositories from both personal accounts and organizations with individual control over each repository's owner type:
+
+#### Features:
+- **Smart Repository Resolution**: Automatically determines the correct GitHub API path based on repository owner type
+- **Mixed Repository Support**: Track both personal and organization repositories simultaneously  
+- **Intelligent UI**: Owner type selection appears automatically when `GITHUB_ORG` is configured
+- **Flexible Repository Specification**: Support for explicit `owner/repo` format
+
+#### Configuration Options:
+
+1. **Personal repositories only** (default)
+   - Set only `GITHUB_USERNAME`
+   - All repositories use personal account
+
+2. **Organization repositories with choice**
+   - Set both `GITHUB_USERNAME` and `GITHUB_ORG`
+   - Web UI shows owner type selection for each repository
+   - Choose "Personal" or "Organization" when adding repositories
+
+3. **Explicit path format**
+   - Add repositories as `owner/repo` (e.g., `myorg/project` or `someuser/repo`)
+   - Bypasses automatic owner resolution
+
+#### Examples:
+
+**Personal only:**
+```bash
+GITHUB_USERNAME=johndoe
+# Add "myproject" → uses johndoe/myproject
+```
+
+**Mixed personal and organization:**
+```bash
+GITHUB_USERNAME=johndoe
+GITHUB_ORG=mycompany
+# Add "myproject" as Personal → uses johndoe/myproject
+# Add "web-app" as Organization → uses mycompany/web-app
+```
+
+**Explicit paths:**
+```bash
+# Add "otherorg/special-project" → uses otherorg/special-project
+# Add "contributor/fork" → uses contributor/fork
 ```
 
 ## Usage
@@ -307,6 +356,7 @@ Configure environment variables in a `.env` file:
 ```bash
 GITHUB_TOKEN=your_github_token
 GITHUB_USERNAME=your_username
+GITHUB_ORG=your_organization_name  # Optional: for organization repositories
 USE_FIRESTORE=false
 PORT=8080
 ```

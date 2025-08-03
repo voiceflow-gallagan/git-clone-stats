@@ -96,21 +96,31 @@ class FirestoreDatabaseManager:
             'is_active': True
         }, merge=True)
 
-    def get_tracked_repos(self) -> List[str]:
-        """Get all active tracked repositories."""
+    def get_tracked_repos(self) -> List[Dict[str, str]]:
+        """Get all active tracked repositories with their owner types."""
         repos = []
         docs = self.db.collection('tracked_repos').where('is_active', '==', True).stream()
         for doc in docs:
-            repos.append(doc.id)
+            data = doc.to_dict()
+            repos.append({
+                "repo_name": doc.id,
+                "owner_type": data.get("owner_type", "user")
+            })
         return repos
+        
+    def get_tracked_repo_names(self) -> List[str]:
+        """Get just the repository names (for backward compatibility)."""
+        repos = self.get_tracked_repos()
+        return [repo["repo_name"] for repo in repos]
 
-    def add_tracked_repo(self, repo_name: str) -> bool:
-        """Add a new repository to track."""
+    def add_tracked_repo(self, repo_name: str, owner_type: str = 'user') -> bool:
+        """Add a new repository to track with specified owner type."""
         doc_ref = self.db.collection('tracked_repos').document(repo_name)
         doc_ref.set({
             'repo_name': repo_name,
             'added_at': datetime.utcnow().isoformat(),
-            'is_active': True
+            'is_active': True,
+            'owner_type': owner_type
         })
         self.logger.info(f"Added {repo_name} to tracked repositories")
         return True
