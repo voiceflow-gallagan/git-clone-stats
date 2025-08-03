@@ -378,6 +378,7 @@ class GitHubStatsTracker:
         """
         self.github_token = github_token
         self.github_username = github_username
+        self.github_org = os.environ.get('GITHUB_ORG')
         self.repos = repos
         self.db_manager = db_manager
         self.session = requests.Session()
@@ -393,9 +394,29 @@ class GitHubStatsTracker:
         )
         self.logger = logging.getLogger(__name__)
 
+    def _get_repo_owner(self, repo: str) -> str:
+        """
+        Determine the repository owner (organization or username).
+        
+        If repo contains a slash (e.g., 'org/repo'), use that format.
+        Otherwise, use GITHUB_ORG if set, fallback to username.
+        
+        Args:
+            repo: Repository name, can be 'repo' or 'owner/repo'
+            
+        Returns:
+            Full repository path as 'owner/repo'
+        """
+        if '/' in repo:
+            return repo
+        
+        owner = self.github_org if self.github_org else self.github_username
+        return f"{owner}/{repo}"
+
     def _fetch_clone_data(self, repo: str) -> Dict[str, any]:
         """Fetch clone data from GitHub API."""
-        url = f"https://api.github.com/repos/{self.github_username}/{repo}/traffic/clones"
+        repo_path = self._get_repo_owner(repo)
+        url = f"https://api.github.com/repos/{repo_path}/traffic/clones"
 
         try:
             response = self.session.get(url, timeout=30)
@@ -408,7 +429,8 @@ class GitHubStatsTracker:
 
     def _fetch_view_data(self, repo: str) -> Dict[str, any]:
         """Fetch view data from GitHub API."""
-        url = f"https://api.github.com/repos/{self.github_username}/{repo}/traffic/views"
+        repo_path = self._get_repo_owner(repo)
+        url = f"https://api.github.com/repos/{repo_path}/traffic/views"
 
         try:
             response = self.session.get(url, timeout=30)
@@ -421,7 +443,8 @@ class GitHubStatsTracker:
 
     def _fetch_repo_metadata(self, repo: str) -> Dict[str, any]:
         """Fetch repository metadata from GitHub API."""
-        url = f"https://api.github.com/repos/{self.github_username}/{repo}"
+        repo_path = self._get_repo_owner(repo)
+        url = f"https://api.github.com/repos/{repo_path}"
 
         try:
             response = self.session.get(url, timeout=30)

@@ -83,6 +83,7 @@ docker run -d \
   -p 8080:8080 \
   -e GITHUB_TOKEN=your_token \
   -e GITHUB_USERNAME=your_username \
+  -e GITHUB_ORG=your_organization \
   -v $(pwd)/data:/app/data \
   git-stats
 ```
@@ -104,7 +105,21 @@ Set up your GitHub Personal Access Token and Username. This requires a GitHub Pe
 ```bash
 export GITHUB_TOKEN='your_github_personal_access_token'
 export GITHUB_USERNAME='your_github_username'
+export GITHUB_ORG='your_organization_name'  # Optional: for tracking organization repositories
 ```
+
+### Organization Repository Support
+
+Git-Stats supports tracking repositories from both personal accounts and organizations:
+
+1. **Personal repositories**: Use just `GITHUB_USERNAME` (default behavior)
+2. **Organization repositories**: Set `GITHUB_ORG` to your organization name
+3. **Mixed repositories**: Add repositories with full path format (`owner/repo`)
+
+**Examples:**
+- Personal repo: Add `myrepo` (uses `GITHUB_USERNAME/myrepo`)
+- Organization repo: Set `GITHUB_ORG=myorg`, add `myrepo` (uses `myorg/myrepo`)  
+- Mixed: Add `otherorg/repo` or `someuser/repo` (uses exact path)
 
 ## Usage
 
@@ -307,6 +322,7 @@ Configure environment variables in a `.env` file:
 ```bash
 GITHUB_TOKEN=your_github_token
 GITHUB_USERNAME=your_username
+GITHUB_ORG=your_organization_name  # Optional: for organization repositories
 USE_FIRESTORE=false
 PORT=8080
 ```
