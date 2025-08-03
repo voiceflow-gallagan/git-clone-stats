@@ -50,6 +50,7 @@ function showToast(message, type = 'success') {
 let allRepos = [];
 let filteredRepos = [];
 let githubUsername = '';
+let githubOrg = '';
 let repoCardTemplate = '';
 
 // Chart view state
@@ -476,12 +477,30 @@ const api = {
     }
 };
 
+// Update owner type visibility based on configuration
+function updateOwnerTypeVisibility() {
+    const ownerTypeGroup = document.getElementById('owner-type-group');
+    if (ownerTypeGroup) {
+        // Show owner type selection if GITHUB_ORG is configured
+        if (githubOrg) {
+            ownerTypeGroup.style.display = 'block';
+        } else {
+            ownerTypeGroup.style.display = 'none';
+        }
+    }
+}
+
 // Fetch Statistics
 async function fetchStats() {
     try {
         showLoading(true);
         const data = await api.get('/api/stats');
         githubUsername = data.github_username || '';
+        githubOrg = data.github_org || '';
+        
+        // Show owner type selection if organization is configured
+        updateOwnerTypeVisibility();
+        
         processStats(data.stats);
         updateHeroStats();
         renderRepos();
@@ -798,9 +817,12 @@ async function fetchTrackedRepos() {
     }
 }
 
-async function addTrackedRepo(repoName) {
+async function addTrackedRepo(repoName, ownerType = 'user') {
     try {
-        const result = await api.post('/api/tracked-repos/add', { repo_name: repoName });
+        const result = await api.post('/api/tracked-repos/add', { 
+            repo_name: repoName,
+            owner_type: ownerType
+        });
         showToast(result.message, 'success');
         return true;
     } catch (error) {
@@ -834,15 +856,30 @@ function renderTrackedRepos(repos) {
         return;
     }
 
-    trackedReposList.innerHTML = repos.map(repo => `
+    trackedReposList.innerHTML = repos.map(repo => {
+        // Handle both old format (string) and new format (object)
+        const repoName = typeof repo === 'string' ? repo : repo.repo_name || repo;
+        const ownerType = (typeof repo === 'object' && repo.owner_type) ? repo.owner_type : 'user';
+        const ownerIcon = ownerType === 'org' ? 'fas fa-building' : 'fas fa-user';
+        const ownerLabel = ownerType === 'org' ? 'Organization' : 'Personal';
+        
+        return `
         <div class="tracked-repo-item">
-            <span class="repo-name">${repo}</span>
-            <button class="btn btn-danger btn-sm remove-btn" onclick="handleRemoveRepo('${repo}')">
+            <div class="repo-info">
+                <span class="repo-name">${repoName}</span>
+                ${githubOrg ? `
+                <span class="owner-type-badge">
+                    <i class="${ownerIcon}"></i>
+                    ${ownerLabel}
+                </span>
+                ` : ''}
+            </div>
+            <button class="btn btn-danger btn-sm remove-btn" onclick="handleRemoveRepo('${repoName}')">
                 <i class="fas fa-trash"></i>
                 Remove
             </button>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 }
 
 async function loadTrackedRepos() {
@@ -865,13 +902,16 @@ async function handleAddRepo() {
     }
 
     // Validate repository name format
-    if (!/^[a-zA-Z0-9\-_\.]+$/.test(repoName)) {
-        showToast('Repository name can only contain letters, numbers, hyphens, underscores, and dots', 'error');
+    if (!/^[a-zA-Z0-9\-_\.\/]+$/.test(repoName)) {
+        showToast('Repository name can only contain letters, numbers, hyphens, underscores, dots, and slashes', 'error');
         return;
     }
 
+    const ownerTypeSelect = document.getElementById('owner-type-select');
+    const ownerType = ownerTypeSelect ? ownerTypeSelect.value : 'user';
+
     await withButtonLoading(addRepoBtn, ' Adding...', async () => {
-        const success = await addTrackedRepo(repoName);
+        const success = await addTrackedRepo(repoName, ownerType);
         if (success) {
             newRepoInput.value = '';
             await loadTrackedRepos();

@@ -67,9 +67,18 @@ class DatabaseManager:
                         repo_name TEXT PRIMARY KEY,
                         added_at TEXT NOT NULL,
                         is_active INTEGER DEFAULT 1,
-                        last_sync TEXT
+                        last_sync TEXT,
+                        owner_type TEXT DEFAULT 'user'
                     )
                 """)
+                
+                # Migration: Add owner_type column if it doesn't exist
+                try:
+                    self.conn.execute("ALTER TABLE tracked_repos ADD COLUMN owner_type TEXT DEFAULT 'user'")
+                    self.conn.commit()
+                except Exception:
+                    # Column already exists, ignore
+                    pass
                 self.conn.execute("""
                     CREATE TABLE IF NOT EXISTS repo_stars (
                         repo TEXT PRIMARY KEY,
@@ -163,22 +172,27 @@ class DatabaseManager:
             self.logger.error(f"Failed to upsert view records for {repo}: {e}")
             raise
 
-    def get_tracked_repos(self) -> List[str]:
-        """Get all actively tracked repositories."""
+    def get_tracked_repos(self) -> List[Dict[str, str]]:
+        """Get all actively tracked repositories with their owner types."""
         rows = self._execute_query(
-            "SELECT repo_name FROM tracked_repos WHERE is_active = 1"
+            "SELECT repo_name, owner_type FROM tracked_repos WHERE is_active = 1"
         )
-        return [row[0] for row in rows] if rows else []
+        return [{"repo_name": row[0], "owner_type": row[1] if row[1] else "user"} for row in rows] if rows else []
+        
+    def get_tracked_repo_names(self) -> List[str]:
+        """Get just the repository names (for backward compatibility)."""
+        repos = self.get_tracked_repos()
+        return [repo["repo_name"] for repo in repos]
 
-    def add_tracked_repo(self, repo_name: str) -> bool:
-        """Add a repository to tracking."""
+    def add_tracked_repo(self, repo_name: str, owner_type: str = 'user') -> bool:
+        """Add a repository to tracking with specified owner type."""
         try:
             with self.conn:
                 self.conn.execute(
-                    "INSERT OR REPLACE INTO tracked_repos (repo_name, added_at, is_active) VALUES (?, ?, 1)",
-                    (repo_name, datetime.now().isoformat())
+                    "INSERT OR REPLACE INTO tracked_repos (repo_name, added_at, is_active, owner_type) VALUES (?, ?, 1, ?)",
+                    (repo_name, datetime.now().isoformat(), owner_type)
                 )
-            self.logger.info(f"Added {repo_name} to tracked repos.")
+            self.logger.info(f"Added {repo_name} to tracked repos (owner_type: {owner_type}).")
             return True
         except sqlite3.Error as e:
             self.logger.error(f"Failed to add tracked repo {repo_name}: {e}")
@@ -271,12 +285,13 @@ class DatabaseManager:
                     })
 
                 # Export tracked repos
-                cursor = self.conn.execute("SELECT repo_name, added_at, is_active FROM tracked_repos")
+                cursor = self.conn.execute("SELECT repo_name, added_at, is_active, owner_type FROM tracked_repos")
                 for row in cursor.fetchall():
                     export_data["tracked_repos"].append({
                         "repo_name": row["repo_name"],
                         "added_at": row["added_at"],
-                        "is_active": row["is_active"]
+                        "is_active": row["is_active"],
+                        "owner_type": row["owner_type"] if row["owner_type"] else "user"
                     })
 
                 # Export star counts
@@ -394,28 +409,36 @@ class GitHubStatsTracker:
         )
         self.logger = logging.getLogger(__name__)
 
-    def _get_repo_owner(self, repo: str) -> str:
+    def _get_repo_path(self, repo_name: str, owner_type: str = 'user') -> str:
         """
-        Determine the repository owner (organization or username).
-        
-        If repo contains a slash (e.g., 'org/repo'), use that format.
-        Otherwise, use GITHUB_ORG if set, fallback to username.
+        Determine the full repository path based on owner type.
         
         Args:
-            repo: Repository name, can be 'repo' or 'owner/repo'
+            repo_name: Repository name, can be 'repo' or 'owner/repo'
+            owner_type: Either 'user' or 'org'
             
         Returns:
             Full repository path as 'owner/repo'
         """
-        if '/' in repo:
-            return repo
+        # If repo already contains slash, use as-is
+        if '/' in repo_name:
+            return repo_name
         
-        owner = self.github_org if self.github_org else self.github_username
-        return f"{owner}/{repo}"
+        # Determine owner based on type
+        if owner_type == 'org':
+            if not self.github_org:
+                self.logger.warning(f"Repository {repo_name} marked as org but GITHUB_ORG not set, falling back to username")
+                owner = self.github_username
+            else:
+                owner = self.github_org
+        else:  # owner_type == 'user' or default
+            owner = self.github_username
+            
+        return f"{owner}/{repo_name}"
 
-    def _fetch_clone_data(self, repo: str) -> Dict[str, any]:
+    def _fetch_clone_data(self, repo: str, owner_type: str = 'user') -> Dict[str, any]:
         """Fetch clone data from GitHub API."""
-        repo_path = self._get_repo_owner(repo)
+        repo_path = self._get_repo_path(repo, owner_type)
         url = f"https://api.github.com/repos/{repo_path}/traffic/clones"
 
         try:
@@ -427,9 +450,9 @@ class GitHubStatsTracker:
             self.logger.error(f"Error fetching clone data for {repo}: {e}")
             raise
 
-    def _fetch_view_data(self, repo: str) -> Dict[str, any]:
+    def _fetch_view_data(self, repo: str, owner_type: str = 'user') -> Dict[str, any]:
         """Fetch view data from GitHub API."""
-        repo_path = self._get_repo_owner(repo)
+        repo_path = self._get_repo_path(repo, owner_type)
         url = f"https://api.github.com/repos/{repo_path}/traffic/views"
 
         try:
@@ -441,9 +464,9 @@ class GitHubStatsTracker:
             self.logger.error(f"Error fetching view data for {repo}: {e}")
             raise
 
-    def _fetch_repo_metadata(self, repo: str) -> Dict[str, any]:
+    def _fetch_repo_metadata(self, repo: str, owner_type: str = 'user') -> Dict[str, any]:
         """Fetch repository metadata from GitHub API."""
-        repo_path = self._get_repo_owner(repo)
+        repo_path = self._get_repo_path(repo, owner_type)
         url = f"https://api.github.com/repos/{repo_path}"
 
         try:
@@ -455,7 +478,7 @@ class GitHubStatsTracker:
             self.logger.error(f"Error fetching metadata for {repo}: {e}")
             raise
 
-    def _update_repository(self, repo: str) -> None:
+    def _update_repository(self, repo: str, owner_type: str = 'user') -> None:
         """Update clone and view data for a single repository."""
         self.logger.info(f"Updating data for {repo}")
 
@@ -463,7 +486,7 @@ class GitHubStatsTracker:
         self.logger.info("Fetching data from GitHub...")
         try:
             # Fetch clone data
-            clone_data = self._fetch_clone_data(repo)
+            clone_data = self._fetch_clone_data(repo, owner_type)
             clone_entries = clone_data.get("clones", [])
 
             # Process all clone entries (GitHub may retroactively update statistics)
@@ -481,7 +504,7 @@ class GitHubStatsTracker:
                 self.logger.info(f"No clone records to update for {repo}")
 
             # Fetch view data
-            view_data = self._fetch_view_data(repo)
+            view_data = self._fetch_view_data(repo, owner_type)
             view_entries = view_data.get("views", [])
 
             # Process all view entries
@@ -500,7 +523,7 @@ class GitHubStatsTracker:
 
             # Fetch and update star count
             self.logger.info("Fetching repository metadata...")
-            metadata = self._fetch_repo_metadata(repo)
+            metadata = self._fetch_repo_metadata(repo, owner_type)
             star_count = metadata.get("stargazers_count", 0)
             self.db_manager.update_repo_stars(repo, star_count)
 
@@ -519,15 +542,24 @@ class GitHubStatsTracker:
 
         # Get tracked repos from database if available, otherwise use configured repos
         tracked_repos = self.db_manager.get_tracked_repos()
-        repos_to_update = tracked_repos if tracked_repos else self.repos
+        
+        if tracked_repos:
+            # Use tracked repos with owner type info
+            repos_to_update = tracked_repos
+        else:
+            # Convert legacy repo list to new format
+            repos_to_update = [{"repo_name": repo, "owner_type": "user"} for repo in self.repos]
 
-        for repo in repos_to_update:
+        for repo_info in repos_to_update:
             try:
+                repo_name = repo_info["repo_name"]
+                owner_type = repo_info.get("owner_type", "user")
+                
                 print("=" * 60)
-                print(f"   Updating data for {repo}")
+                print(f"   Updating data for {repo_name}")
                 print("=" * 60)
 
-                self._update_repository(repo)
+                self._update_repository(repo_name, owner_type)
                 print()
 
             except Exception as e:

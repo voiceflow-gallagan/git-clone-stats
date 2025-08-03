@@ -110,16 +110,50 @@ export GITHUB_ORG='your_organization_name'  # Optional: for tracking organizatio
 
 ### Organization Repository Support
 
-Git-Stats supports tracking repositories from both personal accounts and organizations:
+Git-Stats provides intelligent support for tracking repositories from both personal accounts and organizations with individual control over each repository's owner type:
 
-1. **Personal repositories**: Use just `GITHUB_USERNAME` (default behavior)
-2. **Organization repositories**: Set `GITHUB_ORG` to your organization name
-3. **Mixed repositories**: Add repositories with full path format (`owner/repo`)
+#### Features:
+- **Smart Repository Resolution**: Automatically determines the correct GitHub API path based on repository owner type
+- **Mixed Repository Support**: Track both personal and organization repositories simultaneously  
+- **Intelligent UI**: Owner type selection appears automatically when `GITHUB_ORG` is configured
+- **Flexible Repository Specification**: Support for explicit `owner/repo` format
 
-**Examples:**
-- Personal repo: Add `myrepo` (uses `GITHUB_USERNAME/myrepo`)
-- Organization repo: Set `GITHUB_ORG=myorg`, add `myrepo` (uses `myorg/myrepo`)  
-- Mixed: Add `otherorg/repo` or `someuser/repo` (uses exact path)
+#### Configuration Options:
+
+1. **Personal repositories only** (default)
+   - Set only `GITHUB_USERNAME`
+   - All repositories use personal account
+
+2. **Organization repositories with choice**
+   - Set both `GITHUB_USERNAME` and `GITHUB_ORG`
+   - Web UI shows owner type selection for each repository
+   - Choose "Personal" or "Organization" when adding repositories
+
+3. **Explicit path format**
+   - Add repositories as `owner/repo` (e.g., `myorg/project` or `someuser/repo`)
+   - Bypasses automatic owner resolution
+
+#### Examples:
+
+**Personal only:**
+```bash
+GITHUB_USERNAME=johndoe
+# Add "myproject" → uses johndoe/myproject
+```
+
+**Mixed personal and organization:**
+```bash
+GITHUB_USERNAME=johndoe
+GITHUB_ORG=mycompany
+# Add "myproject" as Personal → uses johndoe/myproject
+# Add "web-app" as Organization → uses mycompany/web-app
+```
+
+**Explicit paths:**
+```bash
+# Add "otherorg/special-project" → uses otherorg/special-project
+# Add "contributor/fork" → uses contributor/fork
+```
 
 ## Usage
 

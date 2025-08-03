@@ -216,6 +216,7 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
                     "success": True,
                     "stats": results,
                     "github_username": os.environ.get('GITHUB_USERNAME', ''),
+                    "github_org": os.environ.get('GITHUB_ORG', ''),
                     "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
                 }
                 self._send_json_response(stats)
@@ -247,14 +248,21 @@ class StatsRequestHandler(http.server.SimpleHTTPRequestHandler):
             data = json.loads(post_data.decode('utf-8'))
             
             repo_name = data.get('repo_name')
+            owner_type = data.get('owner_type', 'user')
+            
             if not repo_name:
                 self._send_json_error("Missing 'repo_name' in request body", HTTPStatus.BAD_REQUEST)
+                return
+                
+            # Validate owner_type
+            if owner_type not in ['user', 'org']:
+                self._send_json_error("Invalid 'owner_type'. Must be 'user' or 'org'", HTTPStatus.BAD_REQUEST)
                 return
 
             db_manager = get_database_manager()
             with db_manager:
                 db_manager.setup_database()
-                success = db_manager.add_tracked_repo(repo_name)
+                success = db_manager.add_tracked_repo(repo_name, owner_type)
                 
             if success:
                 self._send_json_response({"success": True, "message": f"Added {repo_name} to tracked repositories"})
