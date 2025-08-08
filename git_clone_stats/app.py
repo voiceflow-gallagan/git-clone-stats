@@ -32,54 +32,22 @@ class DatabaseManager:
         self.logger = logging.getLogger(__name__)
 
     def __enter__(self):
-        # Ensure parent directory exists before opening SQLite file
+        # The database path should already be resolved and tested by the factory
         try:
             abs_db_path = os.path.abspath(self.db_path)
             parent_dir = os.path.dirname(abs_db_path) or "."
 
-            # Create parent directory with explicit permissions
+            # Ensure parent directory exists (should already be tested, but be safe)
             os.makedirs(parent_dir, mode=0o755, exist_ok=True)
-
-            # Test if we can write to the directory by creating a temp file
-            test_file = os.path.join(parent_dir, ".write_test")
-            try:
-                with open(test_file, 'w') as f:
-                    f.write("test")
-                os.remove(test_file)
-            except (OSError, IOError) as write_test_error:
-                self.logger.warning(f"Directory {parent_dir} is not writable: {write_test_error}")
-                raise sqlite3.OperationalError(f"Cannot write to directory {parent_dir}")
 
             self.conn = sqlite3.connect(abs_db_path)
             self.conn.row_factory = sqlite3.Row
             # Normalize stored path to absolute (helps other components)
             self.db_path = abs_db_path
-            self.logger.info(f"Successfully opened SQLite database at {abs_db_path}")
+            self.logger.debug(f"Successfully opened SQLite database at {abs_db_path}")
             return self
         except (sqlite3.OperationalError, OSError, IOError) as e:
-            # Common on platforms where the mounted volume is not writable by the container user
             self.logger.error(f"Failed to open SQLite database at {self.db_path}: {e}")
-
-            # Optional, explicit fallback to a writable temp location to keep service alive
-            allow_fallback = os.environ.get("ALLOW_DB_FALLBACK", "").lower() == "true"
-            if allow_fallback:
-                fallback_path = os.environ.get("DATABASE_FALLBACK_PATH", "/tmp/github_stats.db")
-                try:
-                    fallback_abs = os.path.abspath(fallback_path)
-                    fallback_dir = os.path.dirname(fallback_abs) or "."
-                    os.makedirs(fallback_dir, mode=0o755, exist_ok=True)
-                    self.logger.warning(
-                        f"Falling back to temporary SQLite path: {fallback_abs}. Data may be ephemeral."
-                    )
-                    self.conn = sqlite3.connect(fallback_abs)
-                    self.conn.row_factory = sqlite3.Row
-                    self.db_path = fallback_abs
-                    return self
-                except Exception as fallback_error:
-                    self.logger.error(
-                        f"Fallback SQLite open failed at {fallback_path}: {fallback_error}"
-                    )
-            # Re-raise original error if no fallback or fallback fails
             raise
 
     def __exit__(self, exc_type, exc_val, exc_tb):
