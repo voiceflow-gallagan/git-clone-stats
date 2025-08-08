@@ -4,19 +4,19 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "${PORT:-8989}:8989"
+      - "${PORT:-3159}:3159"
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GITHUB_USERNAME=${GITHUB_USERNAME}
       - GITHUB_ORG=${GITHUB_ORG}
       - USE_FIRESTORE=${USE_FIRESTORE:-false}
-      - PORT=${PORT:-8989}
+      - PORT=${PORT:-3159}
     volumes:
       # Mount data directory for SQLite persistence
       - ./data:/app/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8989/api/stats').read()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3159/api/stats').read()"]
       interval: 30s
       timeout: 10s
       retries: 3

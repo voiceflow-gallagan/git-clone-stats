@@ -32,9 +32,41 @@ class DatabaseManager:
         self.logger = logging.getLogger(__name__)
 
     def __enter__(self):
-        self.conn = sqlite3.connect(self.db_path)
-        self.conn.row_factory = sqlite3.Row
-        return self
+        # Ensure parent directory exists before opening SQLite file
+        try:
+            abs_db_path = os.path.abspath(self.db_path)
+            parent_dir = os.path.dirname(abs_db_path) or "."
+            os.makedirs(parent_dir, exist_ok=True)
+
+            self.conn = sqlite3.connect(abs_db_path)
+            self.conn.row_factory = sqlite3.Row
+            # Normalize stored path to absolute (helps other components)
+            self.db_path = abs_db_path
+            return self
+        except sqlite3.OperationalError as e:
+            # Common on platforms where the mounted volume is not writable by the container user
+            self.logger.error(f"Failed to open SQLite database at {self.db_path}: {e}")
+
+            # Optional, explicit fallback to a writable temp location to keep service alive
+            allow_fallback = os.environ.get("ALLOW_DB_FALLBACK", "").lower() == "true"
+            if allow_fallback:
+                fallback_path = os.environ.get("DATABASE_FALLBACK_PATH", "/tmp/github_stats.db")
+                try:
+                    fallback_abs = os.path.abspath(fallback_path)
+                    os.makedirs(os.path.dirname(fallback_abs) or ".", exist_ok=True)
+                    self.logger.warning(
+                        f"Falling back to temporary SQLite path: {fallback_abs}. Data may be ephemeral."
+                    )
+                    self.conn = sqlite3.connect(fallback_abs)
+                    self.conn.row_factory = sqlite3.Row
+                    self.db_path = fallback_abs
+                    return self
+                except Exception as fallback_error:
+                    self.logger.error(
+                        f"Fallback SQLite open failed at {fallback_path}: {fallback_error}"
+                    )
+            # Re-raise original error if no fallback or fallback fails
+            raise
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.conn:
@@ -71,7 +103,7 @@ class DatabaseManager:
                         owner_type TEXT DEFAULT 'user'
                     )
                 """)
-                
+
                 # Migration: Add owner_type column if it doesn't exist
                 try:
                     self.conn.execute("ALTER TABLE tracked_repos ADD COLUMN owner_type TEXT DEFAULT 'user'")
@@ -178,7 +210,7 @@ class DatabaseManager:
             "SELECT repo_name, owner_type FROM tracked_repos WHERE is_active = 1"
         )
         return [{"repo_name": row[0], "owner_type": row[1] if row[1] else "user"} for row in rows] if rows else []
-        
+
     def get_tracked_repo_names(self) -> List[str]:
         """Get just the repository names (for backward compatibility)."""
         repos = self.get_tracked_repos()
@@ -412,18 +444,18 @@ class GitHubStatsTracker:
     def _get_repo_path(self, repo_name: str, owner_type: str = 'user') -> str:
         """
         Determine the full repository path based on owner type.
-        
+
         Args:
             repo_name: Repository name, can be 'repo' or 'owner/repo'
             owner_type: Either 'user' or 'org'
-            
+
         Returns:
             Full repository path as 'owner/repo'
         """
         # If repo already contains slash, use as-is
         if '/' in repo_name:
             return repo_name
-        
+
         # Determine owner based on type
         if owner_type == 'org':
             if not self.github_org:
@@ -433,7 +465,7 @@ class GitHubStatsTracker:
                 owner = self.github_org
         else:  # owner_type == 'user' or default
             owner = self.github_username
-            
+
         return f"{owner}/{repo_name}"
 
     def _fetch_clone_data(self, repo: str, owner_type: str = 'user') -> Dict[str, any]:
@@ -542,7 +574,7 @@ class GitHubStatsTracker:
 
         # Get tracked repos from database if available, otherwise use configured repos
         tracked_repos = self.db_manager.get_tracked_repos()
-        
+
         if tracked_repos:
             # Use tracked repos with owner type info
             repos_to_update = tracked_repos
@@ -554,7 +586,7 @@ class GitHubStatsTracker:
             try:
                 repo_name = repo_info["repo_name"]
                 owner_type = repo_info.get("owner_type", "user")
-                
+
                 print("=" * 60)
                 print(f"   Updating data for {repo_name}")
                 print("=" * 60)
@@ -597,7 +629,7 @@ def run_sync():
         # Get appropriate database manager
         from .db_factory import get_database_manager
         db_manager = get_database_manager()
-        
+
         # Setup and run tracker
         with db_manager:
             db_manager.setup_database()

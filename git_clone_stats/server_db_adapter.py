@@ -11,30 +11,37 @@ from typing import Dict, List, Optional, Tuple
 
 class DatabaseAdapter:
     """Base adapter interface for database operations."""
-    
+
     def get_stats_for_repo(self, repo_name: str) -> dict:
         raise NotImplementedError
-    
+
     def get_all_repos_summary(self) -> List[dict]:
         raise NotImplementedError
-    
+
     def get_repo_history(self, repo_name: str, history_type: str = 'clones', days: int = 30) -> List[dict]:
         raise NotImplementedError
 
 
 class SQLiteAdapter(DatabaseAdapter):
     """SQLite adapter for local database operations."""
-    
+
     def __init__(self, db_manager):
         self.db_manager = db_manager
-        # Use absolute path to ensure we're accessing the right database
-        self.db_path = os.path.abspath(os.environ.get('DATABASE_PATH', 'github_stats.db'))
-    
+        # Use absolute path to ensure we're accessing the right database and directory exists
+        raw_path = os.environ.get('DATABASE_PATH', 'github_stats.db')
+        abs_path = os.path.abspath(raw_path)
+        try:
+            os.makedirs(os.path.dirname(abs_path) or ".", exist_ok=True)
+        except Exception:
+            # Best-effort; failures will surface on connect
+            pass
+        self.db_path = abs_path
+
     def get_stats_for_repo(self, repo_name: str) -> dict:
         """Retrieve statistics for a single repository."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            
+
             # Get all-time clone stats
             cursor = conn.execute(
                 "SELECT SUM(count) as total_clones, SUM(uniques) as total_unique_clones "
@@ -42,7 +49,7 @@ class SQLiteAdapter(DatabaseAdapter):
                 (repo_name,)
             )
             clone_row = cursor.fetchone()
-            
+
             # Get all-time view stats
             cursor = conn.execute(
                 "SELECT SUM(count) as total_views, SUM(uniques) as total_unique_views "
@@ -50,7 +57,7 @@ class SQLiteAdapter(DatabaseAdapter):
                 (repo_name,)
             )
             view_row = cursor.fetchone()
-            
+
             # Get last 14 days clone stats
             cursor = conn.execute(
                 "SELECT SUM(count) as recent_clones, SUM(uniques) as recent_unique_clones "
@@ -58,7 +65,7 @@ class SQLiteAdapter(DatabaseAdapter):
                 (repo_name,)
             )
             recent_clone_row = cursor.fetchone()
-            
+
             # Get last 14 days view stats
             cursor = conn.execute(
                 "SELECT SUM(count) as recent_views, SUM(uniques) as recent_unique_views "
@@ -66,7 +73,7 @@ class SQLiteAdapter(DatabaseAdapter):
                 (repo_name,)
             )
             recent_view_row = cursor.fetchone()
-            
+
             # Get sync timestamp and first collected timestamp
             cursor = conn.execute(
                 "SELECT tr.last_sync, "
@@ -79,7 +86,7 @@ class SQLiteAdapter(DatabaseAdapter):
                 (repo_name,)
             )
             timestamp_row = cursor.fetchone()
-            
+
             return {
                 "repo": repo_name,
                 "total_clones": clone_row["total_clones"] or 0,
@@ -93,15 +100,15 @@ class SQLiteAdapter(DatabaseAdapter):
                 "last_updated": timestamp_row["last_sync"] if timestamp_row else None,
                 "first_collected": timestamp_row["first_collected"] if timestamp_row else None
             }
-    
+
     def get_all_repos_summary(self) -> List[dict]:
         """Get summary statistics for all repositories."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            
+
             # Get all tracked repos with both total and recent stats using separate subqueries to avoid cartesian product
             cursor = conn.execute("""
-                SELECT 
+                SELECT
                     tr.repo_name,
                     -- Total all-time stats from subqueries
                     COALESCE(cs.total_clones, 0) as total_clones,
@@ -120,7 +127,7 @@ class SQLiteAdapter(DatabaseAdapter):
                     COALESCE(cs.first_clone_timestamp, vs.first_view_timestamp) as first_collected
                 FROM tracked_repos tr
                 LEFT JOIN (
-                    SELECT 
+                    SELECT
                         repo,
                         SUM(count) as total_clones,
                         SUM(uniques) as total_unique_clones,
@@ -128,11 +135,11 @@ class SQLiteAdapter(DatabaseAdapter):
                         SUM(CASE WHEN datetime(timestamp) >= datetime('now', '-14 days') THEN uniques ELSE 0 END) as last_14_days_unique_clones,
                         MAX(timestamp) as last_clone_timestamp,
                         MIN(timestamp) as first_clone_timestamp
-                    FROM clone_history 
+                    FROM clone_history
                     GROUP BY repo
                 ) cs ON tr.repo_name = cs.repo
                 LEFT JOIN (
-                    SELECT 
+                    SELECT
                         repo,
                         SUM(count) as total_views,
                         SUM(uniques) as total_unique_views,
@@ -140,14 +147,14 @@ class SQLiteAdapter(DatabaseAdapter):
                         SUM(CASE WHEN datetime(timestamp) >= datetime('now', '-14 days') THEN uniques ELSE 0 END) as last_14_days_unique_views,
                         MAX(timestamp) as last_view_timestamp,
                         MIN(timestamp) as first_view_timestamp
-                    FROM view_history 
+                    FROM view_history
                     GROUP BY repo
                 ) vs ON tr.repo_name = vs.repo
                 LEFT JOIN repo_stars rs ON tr.repo_name = rs.repo
                 WHERE tr.is_active = 1
                 ORDER BY tr.repo_name
             """)
-            
+
             results = []
             for row in cursor:
                 results.append({
@@ -164,13 +171,13 @@ class SQLiteAdapter(DatabaseAdapter):
                     "last_updated": row["last_updated"],
                     "first_collected": row["first_collected"]
                 })
-            
+
             return results
-    
+
     def get_repo_history(self, repo_name: str, history_type: str = 'clones', days: int = 30) -> List[dict]:
         """Get historical data for a repository."""
         table = 'clone_history' if history_type == 'clones' else 'view_history'
-        
+
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
@@ -178,7 +185,7 @@ class SQLiteAdapter(DatabaseAdapter):
                 f"WHERE repo = ? ORDER BY timestamp DESC LIMIT ?",
                 (repo_name, days)
             )
-            
+
             results = []
             for row in cursor:
                 results.append({
@@ -186,30 +193,30 @@ class SQLiteAdapter(DatabaseAdapter):
                     "count": row["count"],
                     "uniques": row["uniques"]
                 })
-            
+
             return list(reversed(results))
 
 
 class FirestoreAdapter(DatabaseAdapter):
     """Firestore adapter for cloud database operations."""
-    
+
     def __init__(self, db_manager):
         self.db_manager = db_manager
-    
+
     def get_stats_for_repo(self, repo_name: str) -> dict:
         """Retrieve statistics for a single repository."""
         # Get aggregated data
         agg_data = self.db_manager.get_aggregated_data(repo_name) or {}
-        
+
         # Get all-time stats from history
         clone_history = self.db_manager.get_clone_history(repo_name, days=9999)
         view_history = self.db_manager.get_view_history(repo_name, days=9999)
-        
+
         total_clones = sum(record['count'] for record in clone_history)
         total_unique_clones = sum(record['uniques'] for record in clone_history)
         total_views = sum(record['count'] for record in view_history)
         total_unique_views = sum(record['uniques'] for record in view_history)
-        
+
         return {
             "repo": repo_name,
             "total_clones": total_clones,
@@ -222,12 +229,12 @@ class FirestoreAdapter(DatabaseAdapter):
             "last_14_days_unique_views": agg_data.get('unique_views', 0),
             "last_updated": agg_data.get('last_updated')
         }
-    
+
     def get_all_repos_summary(self) -> List[dict]:
         """Get summary statistics for all repositories."""
         repos = self.db_manager.get_tracked_repos()
         results = []
-        
+
         for repo in repos:
             agg_data = self.db_manager.get_aggregated_data(repo) or {}
             results.append({
@@ -238,16 +245,16 @@ class FirestoreAdapter(DatabaseAdapter):
                 "last_14_days_unique_views": agg_data.get('unique_views', 0),
                 "last_updated": agg_data.get('last_updated')
             })
-        
+
         return sorted(results, key=lambda x: x['repo'])
-    
+
     def get_repo_history(self, repo_name: str, history_type: str = 'clones', days: int = 30) -> List[dict]:
         """Get historical data for a repository."""
         if history_type == 'clones':
             history = self.db_manager.get_clone_history(repo_name, days)
         else:
             history = self.db_manager.get_view_history(repo_name, days)
-        
+
         results = []
         for record in history:
             results.append({
@@ -255,7 +262,7 @@ class FirestoreAdapter(DatabaseAdapter):
                 "count": record["count"],
                 "uniques": record["uniques"]
             })
-        
+
         return results
 
 

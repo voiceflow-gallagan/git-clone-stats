@@ -29,7 +29,7 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
-    PORT=8989 \
+    PORT=3159 \
     DATABASE_PATH=/app/data/github_stats.db
 
 # Create non-root user for security
@@ -53,11 +53,11 @@ RUN mkdir -p /app/data && \
 USER appuser
 
 # Expose port (defaults to 8080, configurable via PORT env var)
-EXPOSE 8989
+EXPOSE 3159
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT:-8989}/api/stats').read()"
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT:-3159}/api/stats').read()"
 
 # Run the application
 CMD ["python", "main.py"]
