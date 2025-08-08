@@ -30,13 +30,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
     PORT=3159 \
-    DATABASE_PATH=/app/data/github_stats.db \
-    ALLOW_DB_FALLBACK=true \
-    DATABASE_FALLBACK_PATH=/tmp/github_stats.db
-
-# Create non-root user for security
-RUN groupadd -r appuser && \
-    useradd -r -g appuser -d /app -s /sbin/nologin appuser
+    DATABASE_PATH=/app/data/github_stats.db
 
 WORKDIR /app
 
@@ -47,13 +41,10 @@ COPY --from=builder /opt/venv /opt/venv
 COPY git_clone_stats/ ./git_clone_stats/
 COPY main.py ./
 
-# Create data directory for SQLite with proper permissions
-RUN mkdir -p /app/data && \
-    chmod 755 /app/data && \
-    chown -R appuser:appuser /app
+# Create data directory for SQLite (running as root, so no permission issues)
+RUN mkdir -p /app/data
 
-# Switch to non-root user
-USER appuser
+# Note: Running as root for reliable file system access in containerized environments
 
 # Expose port (defaults to 8080, configurable via PORT env var)
 EXPOSE 3159

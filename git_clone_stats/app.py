@@ -32,21 +32,21 @@ class DatabaseManager:
         self.logger = logging.getLogger(__name__)
 
     def __enter__(self):
-        # The database path should already be resolved and tested by the factory
+        # Running as root, so directory creation should always work
         try:
             abs_db_path = os.path.abspath(self.db_path)
             parent_dir = os.path.dirname(abs_db_path) or "."
 
-            # Ensure parent directory exists (should already be tested, but be safe)
+            # Ensure parent directory exists
             os.makedirs(parent_dir, mode=0o755, exist_ok=True)
 
             self.conn = sqlite3.connect(abs_db_path)
             self.conn.row_factory = sqlite3.Row
             # Normalize stored path to absolute (helps other components)
             self.db_path = abs_db_path
-            self.logger.debug(f"Successfully opened SQLite database at {abs_db_path}")
+            self.logger.info(f"Successfully opened SQLite database at {abs_db_path}")
             return self
-        except (sqlite3.OperationalError, OSError, IOError) as e:
+        except Exception as e:
             self.logger.error(f"Failed to open SQLite database at {self.db_path}: {e}")
             raise
 
