@@ -1,4 +1,3 @@
-# Multi-stage build for optimal image size and security
 # Build stage
 FROM python:3.11-slim AS builder
 
