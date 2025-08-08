@@ -30,7 +30,9 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
     PORT=3159 \
-    DATABASE_PATH=/app/data/github_stats.db
+    DATABASE_PATH=/app/data/github_stats.db \
+    ALLOW_DB_FALLBACK=true \
+    DATABASE_FALLBACK_PATH=/tmp/github_stats.db
 
 # Create non-root user for security
 RUN groupadd -r appuser && \
@@ -47,6 +49,7 @@ COPY main.py ./
 
 # Create data directory for SQLite with proper permissions
 RUN mkdir -p /app/data && \
+    chmod 755 /app/data && \
     chown -R appuser:appuser /app
 
 # Switch to non-root user

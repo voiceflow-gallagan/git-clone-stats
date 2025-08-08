@@ -36,14 +36,27 @@ class DatabaseManager:
         try:
             abs_db_path = os.path.abspath(self.db_path)
             parent_dir = os.path.dirname(abs_db_path) or "."
-            os.makedirs(parent_dir, exist_ok=True)
+
+            # Create parent directory with explicit permissions
+            os.makedirs(parent_dir, mode=0o755, exist_ok=True)
+
+            # Test if we can write to the directory by creating a temp file
+            test_file = os.path.join(parent_dir, ".write_test")
+            try:
+                with open(test_file, 'w') as f:
+                    f.write("test")
+                os.remove(test_file)
+            except (OSError, IOError) as write_test_error:
+                self.logger.warning(f"Directory {parent_dir} is not writable: {write_test_error}")
+                raise sqlite3.OperationalError(f"Cannot write to directory {parent_dir}")
 
             self.conn = sqlite3.connect(abs_db_path)
             self.conn.row_factory = sqlite3.Row
             # Normalize stored path to absolute (helps other components)
             self.db_path = abs_db_path
+            self.logger.info(f"Successfully opened SQLite database at {abs_db_path}")
             return self
-        except sqlite3.OperationalError as e:
+        except (sqlite3.OperationalError, OSError, IOError) as e:
             # Common on platforms where the mounted volume is not writable by the container user
             self.logger.error(f"Failed to open SQLite database at {self.db_path}: {e}")
 
@@ -53,7 +66,8 @@ class DatabaseManager:
                 fallback_path = os.environ.get("DATABASE_FALLBACK_PATH", "/tmp/github_stats.db")
                 try:
                     fallback_abs = os.path.abspath(fallback_path)
-                    os.makedirs(os.path.dirname(fallback_abs) or ".", exist_ok=True)
+                    fallback_dir = os.path.dirname(fallback_abs) or "."
+                    os.makedirs(fallback_dir, mode=0o755, exist_ok=True)
                     self.logger.warning(
                         f"Falling back to temporary SQLite path: {fallback_abs}. Data may be ephemeral."
                     )
