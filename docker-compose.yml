@@ -11,6 +11,8 @@ services:
       - GITHUB_ORG=${GITHUB_ORG}
       - USE_FIRESTORE=${USE_FIRESTORE:-false}
       - PORT=${PORT:-3159}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
     volumes:
       # Mount data directory for SQLite persistence
       - ./data:/app/data
